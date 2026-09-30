@@ -1,0 +1,38 @@
+package visual
+
+import (
+	"testing"
+	"time"
+
+	"github.com/bnema/nefergui"
+	"github.com/stretchr/testify/require"
+)
+
+func TestFadeAlphaInterpolatesAndArrives(t *testing.T) {
+	t0 := time.Unix(100, 0)
+	a, done := fadeAlpha(0, 1, t0, 2*time.Second, t0.Add(time.Second))
+	require.InDelta(t, 0.5, a, 1e-9)
+	require.False(t, done)
+	a, done = fadeAlpha(0, 1, t0, 2*time.Second, t0.Add(3*time.Second))
+	require.Equal(t, 1.0, a)
+	require.True(t, done)
+	_, done = fadeAlpha(1, 0, t0, 0, t0)
+	require.True(t, done)
+}
+
+func TestFadeLayerIsClickThroughOverlay(t *testing.T) {
+	l := fadeLayer()
+	require.Equal(t, nefergui.LayerOverlay, l.Level)
+	require.Equal(t, nefergui.KeyboardNone, l.Keyboard)
+	require.NotNil(t, l.InputRects)
+	require.Empty(t, l.InputRects)
+	all := nefergui.AnchorTop | nefergui.AnchorBottom | nefergui.AnchorLeft | nefergui.AnchorRight
+	require.Equal(t, all, l.Anchors)
+}
+
+func TestLabelsAndHintsNeverCarryInput(t *testing.T) {
+	require.Equal(t, "Locked", labelFor(promptNone))
+	require.Equal(t, "PIN", labelFor(promptPIN))
+	require.Equal(t, "Denied", hintFor(nefergui.LockFailed))
+	require.Equal(t, "...", hintFor(nefergui.LockBusy))
+}
