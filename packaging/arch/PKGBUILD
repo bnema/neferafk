@@ -1,0 +1,44 @@
+# Built by `make pkg` at the repo root, from `git archive HEAD`.
+pkgname=neferafk
+pkgver=0.0.0
+pkgrel=1
+pkgdesc='Idle daemon for Wayland: fade, session lock, screens off and suspend'
+arch=('x86_64')
+url='https://github.com/bnema/neferafk'
+license=('GPL-3.0-only')
+# Loaded at runtime (purego, no cgo): not seen by makepkg's library scan.
+depends=('glibc' 'pam' 'libxkbcommon' 'vulkan-icd-loader' 'vulkan-driver' 'systemd'
+	'ttf-dejavu') # lock screen monospace font (DejaVu Sans Mono)
+makedepends=('go>=2:1.27')
+optdepends=('pass: PIN source for auth.mode = pin')
+backup=('etc/pam.d/neferafk')
+source=("$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+	cd "$pkgname-$pkgver"
+	export GOPATH="$srcdir/gopath" GOFLAGS='-mod=readonly -modcacherw' GOWORK=off GOTOOLCHAIN=local
+	go mod download
+	go mod vendor
+}
+
+build() {
+	cd "$pkgname-$pkgver"
+	export CGO_ENABLED=0 GOFLAGS='-mod=vendor -trimpath -buildvcs=false -buildmode=pie' GOPROXY=off GOWORK=off GOTOOLCHAIN=local
+	go build -ldflags "-X main.version=$pkgver" -o neferafk ./cmd/neferafk
+}
+
+check() {
+	cd "$pkgname-$pkgver"
+	./neferafk version
+	./neferafk validate-config examples/config
+}
+
+package() {
+	cd "$pkgname-$pkgver"
+	install -Dm755 neferafk "$pkgdir/usr/bin/neferafk"
+	install -Dm644 packaging/neferafk.pam "$pkgdir/etc/pam.d/neferafk"
+	install -Dm644 examples/config "$pkgdir/usr/share/doc/neferafk/config.example"
+	install -Dm644 README.md "$pkgdir/usr/share/doc/neferafk/README.md"
+	install -Dm644 LICENSE "$pkgdir/usr/share/licenses/neferafk/LICENSE"
+}

@@ -7,11 +7,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/bnema/neferafk/internal/adapters/auth"
+	"github.com/bnema/neferafk/internal/adapters/config"
 	"github.com/bnema/neferafk/internal/adapters/control"
 	"github.com/bnema/neferafk/internal/adapters/visual"
 	"github.com/bnema/neferafk/internal/app"
@@ -25,12 +27,17 @@ const (
 	exitUnsupported = 3
 )
 
+// version is set at build time with -ldflags "-X main.version=...".
+var version = "dev"
+
 const usage = `usage: neferafk <command> [flags]
 
 commands:
   run [--config FILE]   run the absence daemon
   lock                  ask the running daemon to lock now
   status                print the running daemon's state
+  validate-config FILE  check a configuration file and exit
+  version               print the version
   visual                internal: fade/lock process (fd 3 commands in, fd 4 events out)
 `
 
@@ -51,6 +58,27 @@ func execute(args []string, stdout, stderr io.Writer) int {
 		return runVisual(rest, os.NewFile(3, "visual-cmd"), os.NewFile(4, "visual-events"), stderr)
 	case "auth-worker": // hidden: spawned by the visual process only
 		return runAuthWorker(rest, os.NewFile(3, "auth-in"), os.NewFile(4, "auth-out"), stderr)
+	case "version":
+		if len(rest) != 0 {
+			fmt.Fprint(stderr, usage)
+			return exitUsage
+		}
+		fmt.Fprintln(stdout, version)
+		return exitOK
+	case "validate-config":
+		if len(rest) != 1 {
+			fmt.Fprint(stderr, usage)
+			return exitUsage
+		}
+		if _, err := config.Load(rest[0]); err != nil {
+			if errors.Is(err, fs.ErrNotExist) || errors.Is(err, fs.ErrPermission) {
+				fmt.Fprintf(stderr, "neferafk: %v\n", err) // already names the file
+			} else {
+				fmt.Fprintf(stderr, "neferafk: %s: %v\n", rest[0], err)
+			}
+			return exitFailure
+		}
+		return exitOK
 	case "-h", "--help", "help":
 		fmt.Fprint(stdout, usage)
 		return exitOK

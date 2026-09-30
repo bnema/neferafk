@@ -6,6 +6,7 @@ import (
 	"golang.org/x/sys/unix"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
@@ -83,6 +84,41 @@ func TestRunRejectsInvalidConfig(t *testing.T) {
 	}
 	if code, _, e := run(t, "run", "--config", path); code != exitFailure || !strings.Contains(e, "config") {
 		t.Fatalf("%d %q", code, e)
+	}
+}
+
+func TestVersionAndValidateConfig(t *testing.T) {
+	if code, o, _ := run(t, "version"); code != exitOK || strings.TrimSpace(o) != version {
+		t.Fatalf("version: %d %q", code, o)
+	}
+	if code, _, _ := run(t, "version", "extra"); code != exitUsage {
+		t.Fatal("version accepted an argument")
+	}
+	bad := filepath.Join(t.TempDir(), "config")
+	if err := writeFile(bad, "lock.after = banana\n"); err != nil {
+		t.Fatal(err)
+	}
+	missing := filepath.Join(t.TempDir(), "missing")
+	for _, tc := range []struct {
+		name   string
+		args   []string
+		code   int
+		stderr string
+	}{
+		{"example", []string{"validate-config", "../../examples/config"}, exitOK, ""},
+		{"invalid", []string{"validate-config", bad}, exitFailure, "line 1"},
+		{"missing", []string{"validate-config", missing}, exitFailure, "no such file"},
+		{"no file", []string{"validate-config"}, exitUsage, "usage:"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			code, _, e := run(t, tc.args...)
+			if code != tc.code || !strings.Contains(e, tc.stderr) {
+				t.Fatalf("%d %q", code, e)
+			}
+			if tc.name == "missing" && strings.Count(e, missing) != 1 {
+				t.Fatalf("path not named exactly once: %q", e)
+			}
+		})
 	}
 }
 
