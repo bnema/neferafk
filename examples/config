@@ -1,0 +1,18 @@
+# NeferAFK configuration: copy to ~/.config/neferafk/config.
+# Delays count from the last input. `off` disables an action.
+# Changes apply live, except enabling screens off, or enabling lock or sleep
+# when both were off at startup: those need a daemon restart.
+
+fade.after = 6m
+fade.duration = 2s
+lock.after = 5m
+screens.off-after = 7m
+sleep.after = 20m
+
+# password (PAM service /etc/pam.d/neferafk) or pin.
+auth.mode = password
+# PIN mode: 6 to 32 digits from `pass show ENTRY` (or auth.pin-source = env
+# with auth.pin-env = VARIABLE). Replace auth.mode above with:
+# auth.mode = pin
+# auth.pin-source = pass
+# auth.pin-entry = neferafk/pin

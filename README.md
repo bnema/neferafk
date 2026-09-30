@@ -16,13 +16,17 @@ It uses standard protocols only: `ext-idle-notify-v1`, `ext-session-lock-v1`, `w
 
 - Linux with systemd-logind.
 - A compositor that advertises `ext_idle_notifier_v1` (v2), `ext_session_lock_manager_v1`, `zwp_linux_dmabuf_v1` (v4), `wp_linux_drm_syncobj_manager_v1`, and `zwlr_output_power_manager_v1` when screens off is enabled.
-- Password mode needs a PAM service file, `/etc/pam.d/neferafk`, for example:
+- Password mode needs a PAM service file, `/etc/pam.d/neferafk`. The Arch package installs it; otherwise create it with:
 
   ```
   auth include login
   ```
 
-## Build
+## Install
+
+Arch Linux: `make pkg` builds a package of the committed HEAD from `packaging/arch/PKGBUILD` into `dist/`, and `make install` installs it with pacman. `packaging/aur/neferafk-git/PKGBUILD` builds the latest `main`.
+
+From source:
 
 ```sh
 CGO_ENABLED=0 go build -o bin/neferafk ./cmd/neferafk
@@ -34,13 +38,15 @@ CGO_ENABLED=0 go build -o bin/neferafk ./cmd/neferafk
 neferafk run [--config FILE]   run the daemon
 neferafk lock                  lock now
 neferafk status                print the daemon state
+neferafk validate-config FILE  check a configuration file
+neferafk version               print the version
 ```
 
 Start `neferafk run` from your compositor's startup. The daemon writes its log to `$XDG_STATE_HOME/neferafk/logs/daemon.log` (default `~/.local/state/neferafk/logs/daemon.log`).
 
 ## Configuration
 
-The file is `$XDG_CONFIG_HOME/neferafk/config` (default `~/.config/neferafk/config`). It uses flat `key = value` lines, and `#` starts a comment. Changes are applied live. Two cases need a daemon restart: enabling screens off, and enabling lock or sleep when both were off at startup.
+The file is `$XDG_CONFIG_HOME/neferafk/config` (default `~/.config/neferafk/config`); `examples/config` is a commented starting point. It uses flat `key = value` lines, and `#` starts a comment. Changes are applied live. Two cases need a daemon restart: enabling screens off, and enabling lock or sleep when both were off at startup.
 
 ```
 fade.after = 6m
