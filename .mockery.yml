@@ -1,0 +1,45 @@
+# Sealed message interfaces are not mockable; channel ports are tested with messages.
+all: false
+formatter: goimports
+force-file-write: true
+structname: '{{.Mock}}{{.InterfaceName}}'
+template: testify
+template-schema: '{{.Template}}.schema.json'
+require-template-schema-exists: true
+packages:
+  github.com/bnema/neferafk/internal/ports:
+    config:
+      dir: internal/mocks/ports
+      pkgname: portsmocks
+      filename: '{{.InterfaceFile | base | trimSuffix ".go"}}_mock.go'
+    interfaces:
+      Visual:
+      VisualLauncher:
+      VisualSession:
+  # Unexported adapter seams: mocks live next to the code, in test files.
+  github.com/bnema/neferafk/internal/adapters/auth:
+    config:
+      dir: internal/adapters/auth
+      pkgname: auth
+      filename: pam_mock_test.go
+    interfaces:
+      pamBackend:
+      pamTransaction:
+      delayClock:
+  github.com/bnema/neferafk/internal/adapters/logind:
+    interfaces:
+      bus:
+        config:
+          dir: internal/adapters/logind
+          pkgname: logind
+          filename: bus_mock_test.go
+  github.com/bnema/neferafk/internal/adapters/visual:
+    config:
+      dir: internal/adapters/visual
+      pkgname: visual
+      filename: visual_mock_test.go
+    interfaces:
+      workerLauncher:
+      workerProcess:
+      lockRunner:
+      fadeRunner:
