@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"time"
+	"unicode/utf8"
 
 	"github.com/bnema/neferafk/internal/ports"
 	"github.com/bnema/neferclient"
@@ -65,12 +66,11 @@ const (
 	keysymUpperU  = 0x55 // with Shift or Caps Lock
 )
 
-// lockSecretMax bounds the typed secret in code points, one more than an
-// ASCII secret can use in an authentication frame. The buffer drops text past
-// its capacity, so a full buffer may hold a truncated secret: Enter refuses a
-// secret that fills it or whose UTF-8 bytes do not fit a frame, and never
-// submits a cut one.
-const lockSecretMax = ports.AuthMaxSecret + 1
+// lockSecretMax bounds the typed secret in code points. The buffer drops a
+// key whose text would pass its capacity; the margin over a frame (one key
+// yields at most a few code points) means a secret that fits a frame never
+// lost a key. Enter refuses a secret whose UTF-8 bytes do not fit a frame.
+const lockSecretMax = ports.AuthMaxSecret + utf8.UTFMax
 
 // guiLocker runs ext-session-lock on its own Wayland connection with
 // neferclient and draws with one NeferGUI renderer per output.
@@ -308,8 +308,10 @@ func (l *locker) Key(ev *neferclient.KeyEvent) {
 		defer l.clearSecret() // even if OnSubmit panics
 		switch {
 		case !l.lock.Locked() || l.cfg.OnSubmit == nil || l.secret.Len() == 0:
-		case l.secret.Len() >= lockSecretMax || len(l.secret.Bytes()) > ports.AuthMaxSecret:
-			l.status = lockFailed // too long to verify: refused like a wrong secret
+		case len(l.secret.Bytes()) > ports.AuthMaxSecret:
+			if l.status != lockBusy { // an attempt still running keeps its status
+				l.status = lockFailed // too long to verify: refused like a wrong secret
+			}
 		default:
 			l.cfg.OnSubmit(l.secret.Bytes())
 		}

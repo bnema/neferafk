@@ -11,11 +11,11 @@ import (
 	"sort"
 	"time"
 
+	idlenotify "github.com/bnema/go-wayland-bindings/client/extidlenotify"
+	core "github.com/bnema/go-wayland-bindings/client/wayland"
+	outputpower "github.com/bnema/go-wayland-bindings/client/wlroutputpowermanagement"
 	"github.com/bnema/neferafk/internal/ports"
 	"github.com/bnema/wlturbo"
-	core "github.com/bnema/go-wayland-bindings/client/wayland"
-	idlenotify "github.com/bnema/go-wayland-bindings/client/extidlenotify"
-	outputpower "github.com/bnema/go-wayland-bindings/client/wlroutputpowermanagement"
 	"github.com/bnema/zerowrap"
 )
 

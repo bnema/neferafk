@@ -150,9 +150,15 @@ func TestHeadlessFadeEndsAfterReveal(t *testing.T) {
 	startHeadless(t)
 	m := newFadeModel()
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-	defer cancel()
 	done := make(chan error, 1)
 	go func() { done <- guiFader{}.RunFade(ctx, m) }()
+	t.Cleanup(func() { // before the compositor is killed, even on failure
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+		}
+	})
 	m.send(fadeCmd{black: true, dur: 100 * time.Millisecond})
 	time.Sleep(300 * time.Millisecond)
 	select {

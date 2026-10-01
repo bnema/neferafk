@@ -220,9 +220,13 @@ func (f *fader) OutputRemoved(global uint32) {
 	f.screens.OutputRemoved(global)
 }
 
-// Closed: the compositor closed an overlay surface.
+// Closed: the compositor closed an overlay surface. An output left without
+// one stays unfaded; the compositor chose to close it.
 func (f *fader) Closed(id neferclient.SurfaceID) {
 	if s := f.byID[id]; s != nil {
+		if s.name == "" {
+			f.unnamed = false
+		}
 		if err := f.forget(s); err != nil {
 			f.fail(err)
 		}
