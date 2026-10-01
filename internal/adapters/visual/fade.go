@@ -24,10 +24,11 @@ type fadeCmd struct {
 type fadeModel struct {
 	cmds chan fadeCmd
 	wake chan struct{}
+	// base is the monotonic origin for tickUntil; fixed at construction.
+	base time.Time
 	// tickUntil keeps redraws coming past the fade end, as nanoseconds since
 	// base (monotonic, like fadeAlpha). It must not depend on which surface
 	// drew last: a wake redraws all surfaces, but each draws at its own instant.
-	base      time.Time
 	tickUntil atomic.Int64
 	// finish ends the run once a reveal completed; set by the runner before
 	// the loop starts.
