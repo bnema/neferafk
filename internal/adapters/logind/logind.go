@@ -97,9 +97,9 @@ func (a *Adapter) Probe(ctx context.Context) error {
 	a.owner = owner
 	a.caps = ports.SystemCapabilities{}
 	if a.requirements.Session {
-		body, err = a.call(ctx, managerPath, managerInterface+".GetSessionByPID", uint32(os.Getpid()))
+		body, err = a.currentSession(ctx)
 		if err != nil {
-			return fmt.Errorf("current process session unavailable: %w", err)
+			return err
 		}
 		if len(body) != 1 {
 			return errors.New("invalid session reply")
@@ -157,6 +157,27 @@ func (a *Adapter) Probe(ctx context.Context) error {
 	}
 	return nil
 }
+
+// currentSession resolves the process's session by PID. A compositor started
+// as a systemd user service runs outside the session scope, so its children
+// have no PID session; the session the display manager opened is then taken
+// from XDG_SESSION_ID. Probe checks either result against the real UID.
+func (a *Adapter) currentSession(ctx context.Context) ([]any, error) {
+	body, err := a.call(ctx, managerPath, managerInterface+".GetSessionByPID", uint32(os.Getpid()))
+	if err == nil {
+		return body, nil
+	}
+	id := os.Getenv("XDG_SESSION_ID")
+	if id == "" {
+		return nil, fmt.Errorf("current process session unavailable: %w", err)
+	}
+	body, idErr := a.call(ctx, managerPath, managerInterface+".GetSession", id)
+	if idErr != nil {
+		return nil, fmt.Errorf("current process session unavailable: %w; XDG_SESSION_ID: %w", err, idErr)
+	}
+	return body, nil
+}
+
 func (a *Adapter) Capabilities() ports.SystemCapabilities {
 	c := a.caps
 	c.Missing = append([]string(nil), c.Missing...)
