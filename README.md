@@ -24,13 +24,22 @@ It uses standard protocols only: `ext-idle-notify-v1`, `ext-session-lock-v1`, `w
 
 ## Install
 
-Arch Linux: `make pkg` builds a package of the committed HEAD from `packaging/arch/PKGBUILD` into `dist/`, and `make install` installs it with pacman. `packaging/aur/neferafk-git/PKGBUILD` builds the latest `main`.
-
-From source:
+On Arch Linux, install from the AUR:
 
 ```sh
-CGO_ENABLED=0 go build -o bin/neferafk ./cmd/neferafk
+paru -S neferafk-bin   # latest release, pre-built
+paru -S neferafk-git   # latest main, built from source
 ```
+
+Pre-built archives are on the [releases page](https://github.com/bnema/neferafk/releases). To build from a checkout:
+
+```sh
+CGO_ENABLED=0 go build -o bin/neferafk ./cmd/neferafk   # builds bin/neferafk
+make pkg                                               # builds an Arch package of HEAD into dist/
+make install                                           # builds that package and installs it with pacman
+```
+
+The packages install `/etc/pam.d/neferafk` for password mode.
 
 ## Usage
 
