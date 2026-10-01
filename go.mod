@@ -3,7 +3,7 @@ module github.com/bnema/neferafk
 go 1.27
 
 require (
-	github.com/bnema/nefergui v0.3.0
+	github.com/bnema/nefergui v0.4.0
 	github.com/bnema/purego-pam v0.1.0
 	github.com/bnema/wlturbo v0.5.0
 	github.com/bnema/zerowrap v1.4.1

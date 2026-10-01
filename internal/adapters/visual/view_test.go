@@ -20,8 +20,10 @@ func TestFadeAlphaInterpolatesAndArrives(t *testing.T) {
 	require.True(t, done)
 }
 
-func TestFadeLayerIsClickThroughOverlay(t *testing.T) {
+func TestFadeLayerIsClickThroughOverlayOnEveryOutput(t *testing.T) {
 	l := fadeLayer()
+	require.True(t, l.AllOutputs)
+	require.Empty(t, l.Output)
 	require.Equal(t, nefergui.LayerOverlay, l.Level)
 	require.Equal(t, nefergui.KeyboardNone, l.Keyboard)
 	require.NotNil(t, l.InputRects)
