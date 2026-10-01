@@ -140,9 +140,11 @@ func (guiFader) RunFade(ctx context.Context, m *fadeModel) error {
 	return err
 }
 
-// fadeLayer: overlay, all anchors, no keyboard, fully click-through.
+// fadeLayer: overlay on every output, all anchors, no keyboard, fully
+// click-through.
 func fadeLayer() nefergui.LayerConfig {
 	return nefergui.LayerConfig{
+		AllOutputs:    true,
 		Namespace:     "neferafk-fade",
 		Level:         nefergui.LayerOverlay,
 		Anchors:       nefergui.AnchorTop | nefergui.AnchorBottom | nefergui.AnchorLeft | nefergui.AnchorRight,
