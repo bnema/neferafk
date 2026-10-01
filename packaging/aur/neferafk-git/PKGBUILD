@@ -1,6 +1,8 @@
 # Maintainer: bnema <b at bnema dot dev>
+# The release workflow sets pkgver and publishes this file to the AUR on every
+# release tag, so the AUR version never falls behind the latest tag.
 pkgname=neferafk-git
-pkgver=0.1.0.r0.g07cdc18
+pkgver=0.0.0.r0.g0000000
 pkgrel=1
 pkgdesc='Idle daemon for Wayland: fade, session lock, screens off and suspend (git version)'
 arch=('x86_64' 'aarch64')
@@ -12,7 +14,7 @@ depends=('glibc' 'pam' 'libxkbcommon' 'vulkan-icd-loader' 'vulkan-driver' 'syste
 makedepends=('go>=2:1.27' 'git')
 optdepends=('pass: PIN source for auth.mode = pin')
 provides=('neferafk')
-conflicts=('neferafk')
+conflicts=('neferafk' 'neferafk-bin')
 backup=('etc/pam.d/neferafk')
 source=('git+https://github.com/bnema/neferafk.git')
 sha256sums=('SKIP')
