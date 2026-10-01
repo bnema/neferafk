@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bnema/neferafk/internal/ports"
 	"github.com/bnema/nefergui"
 	"github.com/stretchr/testify/require"
 )
@@ -91,33 +92,46 @@ func startHeadless(t *testing.T) io.Writer {
 }
 
 // TestHeadlessLockSubmitsTypedSecretAndUnlocksOnRequest covers both outputs,
-// waits for locked, types a secret, and checks that Enter submits exactly the
-// typed bytes and that only the Unlock request ends the lock.
+// waits for locked and types into the lock. Escape and Ctrl+Shift+U clear the
+// field, a secret too long for an authentication frame is never submitted,
+// Enter submits exactly the typed bytes, and only the Unlock request ends the
+// lock.
 func TestHeadlessLockSubmitsTypedSecretAndUnlocksOnRequest(t *testing.T) {
 	input := startHeadless(t)
 	locked := make(chan struct{}, 1)
-	submits := make(chan []byte, 1)
+	submits := make(chan []byte, 4)
+	outputErrs := make(chan string, 4)
 	unlock := make(chan struct{}, 1)
 	status := make(chan lockStatus, 1)
 	cfg := lockConfig{
-		View:     func(f *nefergui.Frame, st lockState) { lockView(f, st, promptPassword, time.Now()) },
-		OnLocked: func() { locked <- struct{}{} },
-		OnSubmit: func(secret []byte) { submits <- append([]byte(nil), secret...) },
-		OnOutputError: func(output string, err error) {
-			t.Errorf("output %s: %v", output, err)
-		},
-		Unlock: unlock,
-		Status: status,
+		View:          func(f *nefergui.Frame, st lockState) { lockView(f, st, promptPassword, time.Now()) },
+		OnLocked:      func() { locked <- struct{}{} },
+		OnSubmit:      func(secret []byte) { submits <- append([]byte(nil), secret...) },
+		OnOutputError: func(output string, _ error) { outputErrs <- output },
+		Unlock:        unlock,
+		Status:        status,
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-	defer cancel()
 	done := make(chan error, 1)
 	go func() { done <- guiLocker{}.RunLock(ctx, cfg) }()
+	// Runs before the compositor is killed (cleanups run in reverse order), so
+	// the lock goroutine has returned before the test ends, even on failure.
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+		}
+	})
 
 	recv(t, locked)
-	_, err := io.WriteString(input, "sleep 200ms\ntype abc\nsleep 100ms\nkey BackSpace\ntype d\nsleep 100ms\nkey Return\n")
+	long := strings.Repeat("x", ports.AuthMaxSecret+1)
+	_, err := io.WriteString(input, "sleep 200ms\ntype zz\nkey Escape\ntype yy\nkey Ctrl+Shift+u\n"+
+		"key Return\n"+ // empty after the clears: nothing to submit
+		"type "+long+"\nkey Return\n"+ // too long: refused
+		"type abc\nsleep 100ms\nkey BackSpace\ntype d\nsleep 100ms\nkey Return\n")
 	require.NoError(t, err)
-	require.Equal(t, []byte("abd"), recv(t, submits))
+	require.Equal(t, []byte("abd"), recv(t, submits), "the first submission is the last secret")
 	status <- lockFailed // a status change only redraws
 	select {
 	case err := <-done:
@@ -126,6 +140,8 @@ func TestHeadlessLockSubmitsTypedSecretAndUnlocksOnRequest(t *testing.T) {
 	}
 	unlock <- struct{}{}
 	require.NoError(t, recv(t, done))
+	require.Empty(t, submits)
+	require.Empty(t, outputErrs)
 }
 
 // TestHeadlessFadeEndsAfterReveal fades every output to black, then back,

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"slices"
 	"time"
-	"unicode/utf8"
 
 	"github.com/bnema/neferafk/internal/ports"
 	"github.com/bnema/neferclient"
@@ -63,11 +62,15 @@ const (
 	keysymKPEnter = 0xff8d
 	keysymEscape  = 0xff1b
 	keysymU       = 0x75
+	keysymUpperU  = 0x55 // with Shift or Caps Lock
 )
 
-// lockSecretMax bounds the typed secret in code points so its UTF-8 bytes
-// always fit an authentication frame.
-const lockSecretMax = ports.AuthMaxSecret / utf8.UTFMax
+// lockSecretMax bounds the typed secret in code points, one more than an
+// ASCII secret can use in an authentication frame. The buffer drops text past
+// its capacity, so a full buffer may hold a truncated secret: Enter refuses a
+// secret that fills it or whose UTF-8 bytes do not fit a frame, and never
+// submits a cut one.
+const lockSecretMax = ports.AuthMaxSecret + 1
 
 // guiLocker runs ext-session-lock on its own Wayland connection with
 // neferclient and draws with one NeferGUI renderer per output.
@@ -87,16 +90,13 @@ func (guiLocker) RunLock(ctx context.Context, cfg lockConfig) (err error) {
 	}
 	l := &locker{cfg: cfg, secret: neferclient.NewSecretBuffer(lockSecretMax), initial: map[uint32]bool{}}
 	l.screens = newScreens(conn)
-	l.screens.onSetup = l.setupFailed
+	l.screens.onSetup = l.setupPolicy
 	defer func() {
 		l.secret.Wipe()
 		err = errors.Join(err, conn.Close(), l.screens.closeAll())
 	}()
-	for len(conn.Outputs()) == 0 { // the first output may follow Connect
-		if err = l.wait(ctx, nil); err != nil {
-			return err
-		}
-	}
+	// Lock at once, even with no output yet: outputs that appear later are
+	// covered by OutputAdded, and the session is locked meanwhile.
 	if l.lock, err = conn.Lock(); err != nil {
 		return fmt.Errorf("lock: %w", err)
 	}
@@ -182,7 +182,7 @@ func (l *locker) cover(o neferclient.Output) error {
 	s := newScreen(l.conn, surf, o, false)
 	s.view = func(f *nefergui.Frame) { l.view(f, s) }
 	l.add(s)
-	if l.host == nil || s.output < l.host.output {
+	if l.host == nil { // outputs are covered in ascending order: the lowest hosts
 		l.setHost(s)
 	}
 	return nil
@@ -216,12 +216,13 @@ func (l *locker) invalidateHost() {
 	}
 }
 
-// setupFailed: a renderer failure on an output present at acquisition aborts
-// the lock; on a hotplugged output it is reported and that output skipped
-// (the compositor keeps it black).
-func (l *locker) setupFailed(s *screen, err error) error {
+// setupPolicy: the first renderer failure on an output present at acquisition
+// aborts the lock. A failure on a hotplugged output, or a rebuild after a
+// feedback change, is reported and that output dropped (the compositor keeps
+// it black); the lock stays.
+func (l *locker) setupPolicy(s *screen, rebuild bool, err error) error {
 	err = fmt.Errorf("lock render path for output %s: %w", s.name, err)
-	if l.initial[s.output] {
+	if l.initial[s.output] && !rebuild {
 		return err
 	}
 	if l.cfg.OnOutputError != nil {
@@ -262,9 +263,9 @@ func (l *locker) OutputRemoved(global uint32) {
 	l.forgetHost()
 }
 
-// OutputAdded covers an output that appeared while locked.
+// OutputAdded covers an output that appeared after the lock was requested.
 func (l *locker) OutputAdded(o *neferclient.Output) {
-	if l.lock == nil || l.covers(o.Global) {
+	if l.lock == nil || l.err != nil || l.covers(o.Global) {
 		return
 	}
 	if err := l.cover(*o); err != nil && l.cfg.OnOutputError != nil {
@@ -272,7 +273,12 @@ func (l *locker) OutputAdded(o *neferclient.Output) {
 	}
 }
 
+// Locked confirms the lock, unless the run already failed in the same batch
+// of events: it is about to return that error.
 func (l *locker) Locked() {
+	if l.err != nil {
+		return
+	}
 	l.invalidateHost()
 	if l.cfg.OnLocked != nil {
 		l.cfg.OnLocked()
@@ -300,10 +306,14 @@ func (l *locker) Key(ev *neferclient.KeyEvent) {
 	switch {
 	case ev.Keysym == keysymReturn || ev.Keysym == keysymKPEnter:
 		defer l.clearSecret() // even if OnSubmit panics
-		if l.lock.Locked() && l.cfg.OnSubmit != nil && l.secret.Len() > 0 {
+		switch {
+		case !l.lock.Locked() || l.cfg.OnSubmit == nil || l.secret.Len() == 0:
+		case l.secret.Len() >= lockSecretMax || len(l.secret.Bytes()) > ports.AuthMaxSecret:
+			l.status = lockFailed // too long to verify: refused like a wrong secret
+		default:
 			l.cfg.OnSubmit(l.secret.Bytes())
 		}
-	case ev.Keysym == keysymEscape, ev.Keysym == keysymU && ev.Modifiers&neferclient.ModCtrl != 0:
+	case ev.Keysym == keysymEscape, (ev.Keysym == keysymU || ev.Keysym == keysymUpperU) && ev.Modifiers&neferclient.ModCtrl != 0:
 		l.clearSecret()
 	}
 }

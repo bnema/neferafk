@@ -27,6 +27,7 @@ type screen struct {
 	live   map[uint64]int // buffer → release eventfd still watched
 
 	configured, canPresent, haveAcquire bool
+	built                               bool // a renderer was built once: later setups are rebuilds
 }
 
 func newScreen(conn *neferclient.Conn, surf *neferclient.Surface, o neferclient.Output, transparent bool) *screen {
@@ -67,7 +68,7 @@ func (s *screen) setup() error {
 	if err != nil {
 		return fmt.Errorf("renderer: %w", err)
 	}
-	s.r, s.fb = r, fb.Clone() // Feedback storage is reused by later rounds
+	s.r, s.fb, s.built = r, fb.Clone(), true // Feedback storage is reused by later rounds
 	s.resize()
 	return nil
 }
@@ -222,14 +223,15 @@ type screens struct {
 	conn *neferclient.Conn
 	byID map[neferclient.SurfaceID]*screen
 	err  error
-	// onSetup reports a screen whose renderer could not be set up; it returns
-	// the error that ends the run, or nil to drop only that screen.
-	onSetup func(s *screen, err error) error
+	// onSetup reports a screen whose renderer could not be built (rebuild:
+	// after a feedback change); it returns the error that ends the run, or
+	// nil to drop only that screen.
+	onSetup func(s *screen, rebuild bool, err error) error
 }
 
 func newScreens(conn *neferclient.Conn) *screens {
 	ss := &screens{conn: conn, byID: map[neferclient.SurfaceID]*screen{}}
-	ss.onSetup = func(_ *screen, err error) error { return err }
+	ss.onSetup = func(_ *screen, _ bool, err error) error { return err }
 	return ss
 }
 
@@ -247,8 +249,12 @@ func (ss *screens) forget(s *screen) error {
 	return s.close()
 }
 
+// Error ends the run on a failure while handling an event (a keymap that
+// cannot be loaded, a configure that cannot be acknowledged...).
+func (ss *screens) Error(err error) { ss.fail(err) }
+
 func (ss *screens) setupFailed(s *screen, err error) {
-	if err = ss.onSetup(s, err); err != nil {
+	if err = ss.onSetup(s, s.built, err); err != nil {
 		ss.fail(err)
 		return
 	}

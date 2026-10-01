@@ -21,8 +21,8 @@ type fadeCmd struct {
 }
 
 // fadeModel is the overlay's animation state, shared by the surfaces of every
-// output. The view (NeferGUI owner loop) owns the fields below "owned"; other
-// goroutines only use send and animatingAt.
+// output. The RunFade owner goroutine (through fadeView) owns the fields below
+// "owned"; other goroutines only use send and animatingAt.
 type fadeModel struct {
 	cmds chan fadeCmd
 	wake chan struct{}
@@ -36,7 +36,7 @@ type fadeModel struct {
 	// the loop starts.
 	finish context.CancelFunc
 
-	// owned by the view:
+	// owned by the RunFade goroutine:
 	started  bool
 	from, to float64
 	start    time.Time
@@ -179,11 +179,18 @@ func (guiFader) RunFade(ctx context.Context, m *fadeModel) (err error) {
 
 type fader struct {
 	*screens
-	m *fadeModel
+	m       *fadeModel
+	unnamed bool // a surface without an output name exists
 }
 
 // cover adds the overlay surface of an output.
 func (f *fader) cover(o neferclient.Output) error {
+	if o.Name == "" { // wl_output older than v4: the compositor picks the output
+		if f.unnamed {
+			return nil // a second unnamed surface would land on the same output
+		}
+		f.unnamed = true
+	}
 	surf, err := f.conn.NewLayerSurface(fadeLayer(o.Name))
 	if err != nil {
 		return fmt.Errorf("fade surface for output %s: %w", o.Name, err)
@@ -201,6 +208,16 @@ func (f *fader) OutputAdded(o *neferclient.Output) {
 			f.fail(err)
 		}
 	}
+}
+
+// OutputRemoved frees the overlay of an output that went away.
+func (f *fader) OutputRemoved(global uint32) {
+	for _, s := range f.byID {
+		if s.output == global && s.name == "" {
+			f.unnamed = false
+		}
+	}
+	f.screens.OutputRemoved(global)
 }
 
 // Closed: the compositor closed an overlay surface.
