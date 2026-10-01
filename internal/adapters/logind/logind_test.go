@@ -39,6 +39,37 @@ func TestProbeCurrentPIDRealUIDAndReadOnly(t *testing.T) {
 	}
 	// No mutating call was configured: generated mock rejects Inhibit/Suspend.
 }
+
+// A compositor run as a systemd user service gives its children no PID
+// session; the display manager's XDG_SESSION_ID is used, UID-checked.
+func TestProbeFallsBackToXDGSessionID(t *testing.T) {
+	t.Setenv("XDG_SESSION_ID", "c1")
+	for name, uid := range map[string]uint32{"same uid": uint32(os.Getuid()), "other uid": uint32(os.Getuid()) + 1} {
+		t.Run(name, func(t *testing.T) {
+			b := newMockbus(t)
+			b.EXPECT().call(mock.Anything, "org.freedesktop.DBus", dbus.ObjectPath("/org/freedesktop/DBus"), "org.freedesktop.DBus.GetNameOwner", []any{service}).Return([]any{testOwner}, nil).Once()
+			b.EXPECT().call(mock.Anything, testOwner, managerPath, managerInterface+".GetSessionByPID", []any{uint32(os.Getpid())}).Return(nil, errors.New("no session")).Once()
+			b.EXPECT().call(mock.Anything, testOwner, managerPath, managerInterface+".GetSession", []any{"c1"}).Return([]any{testSession}, nil).Once()
+			b.EXPECT().call(mock.Anything, testOwner, testSession, "org.freedesktop.DBus.Properties.Get", []any{sessionInterface, "User"}).Return([]any{dbus.MakeVariant([]any{uid, dbus.ObjectPath("/org/freedesktop/login1/user/_1000")})}, nil).Once()
+			a := newAdapter(b, ports.SystemRequirements{Session: true})
+			err := a.Probe(context.Background())
+			if ok := uid == uint32(os.Getuid()); ok != (err == nil) || ok != a.Capabilities().Session || ok != (a.session == testSession) {
+				t.Fatalf("err=%v caps=%+v session=%q", err, a.Capabilities(), a.session)
+			}
+		})
+	}
+}
+
+func TestProbeWithoutPIDSessionOrXDGSessionIDFails(t *testing.T) {
+	t.Setenv("XDG_SESSION_ID", "")
+	b := newMockbus(t)
+	b.EXPECT().call(mock.Anything, "org.freedesktop.DBus", dbus.ObjectPath("/org/freedesktop/DBus"), "org.freedesktop.DBus.GetNameOwner", []any{service}).Return([]any{testOwner}, nil).Once()
+	b.EXPECT().call(mock.Anything, testOwner, managerPath, managerInterface+".GetSessionByPID", []any{uint32(os.Getpid())}).Return(nil, errors.New("no session")).Once()
+	if err := newAdapter(b, ports.SystemRequirements{Session: true}).Probe(context.Background()); err == nil {
+		t.Fatal("probe succeeded without any session")
+	}
+}
+
 func TestProbeRejectsOtherUID(t *testing.T) {
 	b := newMockbus(t)
 	expectProbe(t, b, uint32(os.Getuid())+1)
