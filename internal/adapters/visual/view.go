@@ -25,7 +25,6 @@ const (
 	fieldEdge  = 2 // relief width (bottom and right)
 	passwordW  = 280
 	pinW       = 160
-	pinSpacing = 6 // letter-spacing between PIN dots
 
 	// boxContentW is the width available to the field inside the box.
 	boxContentW = frameW - 2*boxBorder - 2*boxPadding
@@ -42,8 +41,6 @@ const (
 	cssClock = "color:#ffffff;text-align:right;height:24px;margin-bottom:8px"
 	// cssBalance mirrors cssClock below the box.
 	cssBalance = "height:24px;margin-top:8px"
-	// cssRelief is the inverted relief: bottom and right edges at 50% white.
-	cssRelief = "border-bottom:2px solid rgba(255,255,255,0.5);border-right:2px solid rgba(255,255,255,0.5)"
 	// cssHint and cssHintBalance have the same outer height.
 	cssHint        = "color:#ffffff;margin-top:12px;height:22px;text-align:center"
 	cssHintBalance = "margin-bottom:12px;height:22px"
@@ -52,16 +49,17 @@ const (
 )
 
 var (
+	// cssRelief is the inverted relief: bottom and right edges at 50% white.
+	cssRelief = fmt.Sprintf("border-bottom:%[1]dpx solid rgba(255,255,255,0.5);"+
+		"border-right:%[1]dpx solid rgba(255,255,255,0.5)", fieldEdge)
 	cssFrame = fmt.Sprintf("display:flex;flex-direction:column;align-items:stretch;width:%dpx", frameW)
 	cssBox   = fmt.Sprintf("display:flex;flex-direction:column;align-items:stretch;"+
 		"border:%dpx solid #bfbfbf;padding:%dpx;background-color:#000000", boxBorder, boxPadding)
 	cssMask = fmt.Sprintf("color:#ffffff;height:32px;line-height:32px;width:%dpx;"+
 		"padding:4px %dpx;margin-left:%dpx;%s", passwordW, fieldPadX, fieldMargin(passwordW), cssRelief)
-	// The PIN field shifts its padding by half the trailing letter-spacing
-	// so the dots stay optically centered.
 	cssMaskPIN = fmt.Sprintf("color:#ffffff;height:32px;line-height:32px;width:%dpx;"+
-		"padding:4px %dpx 4px %dpx;margin-left:%dpx;font-size:24px;letter-spacing:%dpx;text-align:center;%s",
-		pinW, fieldPadX-pinSpacing/2, fieldPadX+pinSpacing/2, fieldMargin(pinW), pinSpacing, cssRelief)
+		"padding:4px %dpx;margin-left:%dpx;font-size:24px;letter-spacing:6px;text-align:center;%s",
+		pinW, fieldPadX, fieldMargin(pinW), cssRelief)
 )
 
 // fieldMargin centers a field of content width w inside the box content.
