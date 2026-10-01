@@ -1,0 +1,93 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  check:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write     # create the release
+      id-token: write     # sign the provenance attestation
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/checksums.txt
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: aur-bin
+          path: dist/aur/neferafk-bin.pkgbuild
+          if-no-files-found: error
+
+  # makepkg must run on Arch as a non-root user. publish.sh builds each
+  # package, verifies every source checksum, then pushes it.
+  aur:
+    needs: release
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pkg: [neferafk-bin, neferafk-git]
+    # Pre-releases (v0.2.0-rc1) stay off the AUR: pacman sorts 0.2.0.rc1
+    # after 0.2.0, so the final release would not look like an upgrade.
+    env:
+      SKIP: ${{ contains(github.ref_name, '-') }}
+    steps:
+      - run: >-
+          pacman -Syu --noconfirm --needed
+          base-devel git openssh sudo
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - if: matrix.pkg == 'neferafk-bin' && env.SKIP != 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: aur-bin
+          path: aur-bin
+      - name: Create the build user
+        run: |
+          useradd -m builder
+          echo 'builder ALL=(root) NOPASSWD: /usr/bin/pacman' >/etc/sudoers.d/builder
+      - name: Build, verify and publish ${{ matrix.pkg }}
+        if: env.SKIP != 'true'
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          AUR_USERNAME: ${{ secrets.AUR_USERNAME }}
+          AUR_EMAIL: ${{ secrets.AUR_EMAIL }}
+          PKG: ${{ matrix.pkg }}
+        run: |
+          if [ "$PKG" = neferafk-bin ]; then
+            pkgbuild=aur-bin/neferafk-bin.pkgbuild
+          else
+            pkgbuild=packaging/aur/neferafk-git/PKGBUILD
+          fi
+          chmod -R a+rX "$GITHUB_WORKSPACE"
+          sudo -u builder --preserve-env=AUR_SSH_PRIVATE_KEY,AUR_USERNAME,AUR_EMAIL \
+            packaging/aur/publish.sh "$PKG" "$pkgbuild"
