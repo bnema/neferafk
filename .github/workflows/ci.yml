@@ -1,26 +1,41 @@
-name: ci
-
+name: CI
 on:
   push:
     branches: [main]
   pull_request:
-
-permissions:
-  contents: read
-
+  # The release workflow runs these checks before it publishes.
+  workflow_call:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
-  test:
+  # Arch matches the development system: Go and library versions are the
+  # ones the package is built against.
+  check:
     runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+      # An init process reaps killed children, as on a real session.
+      options: --init
+    env:
+      XDG_RUNTIME_DIR: /tmp/xdg-runtime
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      # pam and libxkbcommon are loaded at runtime through purego; the tests
+      # run without a compositor or a GPU. gcc is for the race detector.
+      - run: >-
+          pacman -Syu --noconfirm --needed
+          git go make gcc pam libxkbcommon
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          go-version-file: go.mod
-      - name: Tools
-        run: |
+          persist-credentials: false
+      - run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          install -d -m 700 "$XDG_RUNTIME_DIR"
+      - run: |
           go install github.com/vektra/mockery/v3@v3.8.0
           go install honnef.co/go/tools/cmd/staticcheck@latest
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - run: make check
       - run: make race
       - run: make mocks-check
+      - run: staticcheck ./...
