@@ -3,6 +3,7 @@ package visual
 import (
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/bnema/nefergui"
 	"github.com/stretchr/testify/require"
@@ -53,27 +54,49 @@ func TestFadeLayerIsClickThroughOverlayOnEveryOutput(t *testing.T) {
 	require.Equal(t, all, l.Anchors)
 }
 
-func TestHintsShowStatusThenPromptNotes(t *testing.T) {
-	require.Equal(t, "Denied", hintFor(nefergui.LockFailed, promptFallback))
-	require.Equal(t, "...", hintFor(nefergui.LockBusy, promptPIN))
-	require.Equal(t, "PIN unavailable, use password", hintFor(nefergui.LockIdle, promptFallback))
-	require.Equal(t, "Authentication unavailable", hintFor(nefergui.LockIdle, promptUnavailable))
-	require.Equal(t, " ", hintFor(nefergui.LockIdle, promptPassword))
-	require.Equal(t, " ", hintFor(nefergui.LockIdle, promptPIN))
+func TestHintsShowStatusThenPromptNotesAndFitTheBox(t *testing.T) {
+	for _, tc := range []struct {
+		s    nefergui.LockStatus
+		p    promptKind
+		want string
+	}{
+		{nefergui.LockFailed, promptFallback, "Denied"},
+		{nefergui.LockFailed, promptMore, "Denied"},
+		{nefergui.LockBusy, promptPIN, "..."},
+		{nefergui.LockIdle, promptFallback, "PIN off, use password"},
+		{nefergui.LockIdle, promptUnavailable, "Authentication unavailable"},
+		{nefergui.LockIdle, promptMore, "Enter again"},
+		{nefergui.LockIdle, promptPassword, " "},
+		{nefergui.LockIdle, promptPIN, " "},
+	} {
+		got := hintFor(tc.s, tc.p)
+		require.Equal(t, tc.want, got)
+		require.LessOrEqual(t, utf8.RuneCountInString(got), maxHintRunes, got)
+	}
 }
 
-func TestMaskUsesCompactFieldForPIN(t *testing.T) {
-	s := nefergui.LockState{Mask: 3}
-	mask, css := maskFor(s, promptPIN)
+func TestMaskIsCappedToTheField(t *testing.T) {
+	mask, _ := maskFor(nefergui.LockState{Mask: 3}, promptPIN)
 	require.Equal(t, "●●●", mask)
-	require.Equal(t, cssMaskPIN, css)
-	mask, css = maskFor(s, promptFallback)
+	mask, _ = maskFor(nefergui.LockState{Mask: 3}, promptFallback)
 	require.Equal(t, "•••_", mask)
-	require.Equal(t, cssMask, css)
+	mask, _ = maskFor(nefergui.LockState{Mask: 512}, promptPIN)
+	require.Equal(t, maxPINMask, utf8.RuneCountInString(mask))
+	mask, _ = maskFor(nefergui.LockState{Mask: 512}, promptPassword)
+	require.Equal(t, maxPasswordMask+1, utf8.RuneCountInString(mask))
 }
 
-func TestUntilNextMinute(t *testing.T) {
-	now := time.Date(2026, 10, 1, 15, 7, 45, 0, time.UTC)
-	require.Equal(t, 15*time.Second, untilNextMinute(now))
-	require.Equal(t, time.Minute, untilNextMinute(now.Truncate(time.Minute)))
+func TestFieldsAreCenteredInTheBox(t *testing.T) {
+	for _, w := range []int{passwordW, pinW} {
+		outer := w + 2*fieldPadX + fieldEdge
+		require.Equal(t, boxContentW-outer-fieldMargin(w), fieldMargin(w), w)
+	}
+}
+
+func TestClockWakeStopsWhenDone(t *testing.T) {
+	done := make(chan struct{})
+	stopped := make(chan struct{})
+	go func() { defer close(stopped); clockWake(done, make(chan struct{})) }()
+	close(done)
+	<-stopped
 }

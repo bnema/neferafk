@@ -215,7 +215,7 @@ func (s *session) startFade(ctx context.Context) *fadeRun {
 	return f
 }
 
-// startLock runs RunLock with the V1 view and a private auth controller. The
+// startLock runs RunLock with the lock view and a private auth controller. The
 // lock context is detached from process signals: it ends only with RunLock.
 func (s *session) startLock(ctx context.Context, c ports.VisualLock) *lockRun {
 	lctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
