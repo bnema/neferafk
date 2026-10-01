@@ -3,6 +3,7 @@ package visual
 import (
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/bnema/nefergui"
 	"github.com/stretchr/testify/require"
@@ -53,9 +54,49 @@ func TestFadeLayerIsClickThroughOverlayOnEveryOutput(t *testing.T) {
 	require.Equal(t, all, l.Anchors)
 }
 
-func TestLabelsAndHintsNeverCarryInput(t *testing.T) {
-	require.Equal(t, "Locked", labelFor(promptNone))
-	require.Equal(t, "PIN", labelFor(promptPIN))
-	require.Equal(t, "Denied", hintFor(nefergui.LockFailed))
-	require.Equal(t, "...", hintFor(nefergui.LockBusy))
+func TestHintsShowStatusThenPromptNotesAndFitTheBox(t *testing.T) {
+	for _, tc := range []struct {
+		s    nefergui.LockStatus
+		p    promptKind
+		want string
+	}{
+		{nefergui.LockFailed, promptFallback, "Denied"},
+		{nefergui.LockFailed, promptMore, "Denied"},
+		{nefergui.LockBusy, promptPIN, "..."},
+		{nefergui.LockIdle, promptFallback, "PIN off, use password"},
+		{nefergui.LockIdle, promptUnavailable, "Authentication unavailable"},
+		{nefergui.LockIdle, promptMore, "Enter again"},
+		{nefergui.LockIdle, promptPassword, " "},
+		{nefergui.LockIdle, promptPIN, " "},
+	} {
+		got := hintFor(tc.s, tc.p)
+		require.Equal(t, tc.want, got)
+		require.LessOrEqual(t, utf8.RuneCountInString(got), maxHintRunes, got)
+	}
+}
+
+func TestMaskIsCappedToTheField(t *testing.T) {
+	mask, _ := maskFor(nefergui.LockState{Mask: 3}, promptPIN)
+	require.Equal(t, "●●●", mask)
+	mask, _ = maskFor(nefergui.LockState{Mask: 3}, promptFallback)
+	require.Equal(t, "•••_", mask)
+	mask, _ = maskFor(nefergui.LockState{Mask: 512}, promptPIN)
+	require.Equal(t, maxPINMask, utf8.RuneCountInString(mask))
+	mask, _ = maskFor(nefergui.LockState{Mask: 512}, promptPassword)
+	require.Equal(t, maxPasswordMask+1, utf8.RuneCountInString(mask))
+}
+
+func TestFieldsAreCenteredInTheBox(t *testing.T) {
+	for _, w := range []int{passwordW, pinW} {
+		outer := w + 2*fieldPadX + fieldEdge
+		require.Equal(t, boxContentW-outer-fieldMargin(w), fieldMargin(w), w)
+	}
+}
+
+func TestClockWakeStopsWhenDone(t *testing.T) {
+	done := make(chan struct{})
+	stopped := make(chan struct{})
+	go func() { defer close(stopped); clockWake(done, make(chan struct{})) }()
+	close(done)
+	<-stopped
 }

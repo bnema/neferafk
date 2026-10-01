@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"time"
 
 	"github.com/bnema/neferafk/internal/adapters/visualproc"
 	"github.com/bnema/neferafk/internal/ports"
@@ -214,7 +215,7 @@ func (s *session) startFade(ctx context.Context) *fadeRun {
 	return f
 }
 
-// startLock runs RunLock with the V1 view and a private auth controller. The
+// startLock runs RunLock with the lock view and a private auth controller. The
 // lock context is detached from process signals: it ends only with RunLock.
 func (s *session) startLock(ctx context.Context, c ports.VisualLock) *lockRun {
 	lctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
@@ -224,6 +225,7 @@ func (s *session) startLock(ctx context.Context, c ports.VisualLock) *lockRun {
 		done: make(chan error, 1), authDone: make(chan struct{}), locked: make(chan struct{}, 1),
 	}
 	go func() { defer close(l.authDone); ctl.run(lctx) }()
+	go clockWake(lctx.Done(), ctl.wake)
 	go func() {
 		secret := nefergui.NewSecretBuffer(ports.AuthMaxSecret)
 		err := s.locker.RunLock(lctx, lockConfig(s.log, ctl, secret, l.locked))
@@ -240,7 +242,7 @@ func lockConfig(log zerowrap.Logger, ctl *authController, secret *nefergui.Secre
 	return nefergui.LockConfig{
 		Secret: secret,
 		View: func(f *nefergui.Frame, st nefergui.LockState) {
-			lockView(f, st, promptKind(ctl.prompt.Load()))
+			lockView(f, st, promptKind(ctl.prompt.Load()), time.Now())
 		},
 		OnLocked: func() {
 			select {
