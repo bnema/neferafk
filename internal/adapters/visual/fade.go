@@ -24,9 +24,10 @@ type fadeCmd struct {
 type fadeModel struct {
 	cmds chan fadeCmd
 	wake chan struct{}
-	// tickUntil (UnixNano) keeps redraws coming until every surface has drawn
-	// a frame after the fade ended. It must not depend on which surface drew
-	// last: a wake redraws all surfaces, but each draws at its own instant.
+	// tickUntil keeps redraws coming past the fade end, as nanoseconds since
+	// base (monotonic, like fadeAlpha). It must not depend on which surface
+	// drew last: a wake redraws all surfaces, but each draws at its own instant.
+	base      time.Time
 	tickUntil atomic.Int64
 	// finish ends the run once a reveal completed; set by the runner before
 	// the loop starts.
@@ -40,7 +41,7 @@ type fadeModel struct {
 }
 
 func newFadeModel() *fadeModel {
-	return &fadeModel{cmds: make(chan fadeCmd, 4), wake: make(chan struct{}, 1)}
+	return &fadeModel{cmds: make(chan fadeCmd, 4), wake: make(chan struct{}, 1), base: time.Now()}
 }
 
 // send queues a retarget (dropping the oldest when full) and requests a redraw.
@@ -82,7 +83,7 @@ func fadeCSS(a float64) string {
 
 // animatingAt reports whether the ticker must still request redraws.
 func (m *fadeModel) animatingAt(now time.Time) bool {
-	return now.UnixNano() < m.tickUntil.Load()
+	return int64(now.Sub(m.base)) < m.tickUntil.Load()
 }
 
 // fadeView applies queued retargets, then draws the overlay for this instant.
@@ -105,8 +106,10 @@ func (m *fadeModel) step(now time.Time) (float64, bool) {
 				m.to = 1
 			}
 			m.start, m.dur, m.started = now, c.dur, true
-			// Two ticks past the end: every surface draws the final opacity.
-			m.tickUntil.Store(now.Add(c.dur + 2*fadeTick).UnixNano())
+			// Any wake at or after the end marks every surface dirty until it
+			// draws, so that draw shows the final opacity. The extra ticks are
+			// margin for ticker jitter.
+			m.tickUntil.Store(int64(now.Add(c.dur + 2*fadeTick).Sub(m.base)))
 			continue
 		default:
 		}
@@ -130,14 +133,19 @@ func (guiFader) RunFade(ctx context.Context, m *fadeModel) error {
 	go func() {
 		t := time.NewTicker(fadeTick)
 		defer t.Stop()
+		was := false
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case now := <-t.C:
-				if m.animatingAt(now) {
+				// One more poke when animation stops: even a starved ticker
+				// then wakes every surface at least once past the end.
+				animating := m.animatingAt(now)
+				if animating || was {
 					m.poke()
 				}
+				was = animating
 			}
 		}
 	}()

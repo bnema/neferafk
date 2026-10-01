@@ -25,7 +25,7 @@ func TestFadeAlphaInterpolatesAndArrives(t *testing.T) {
 func TestFadeKeepsTickingUntilEverySurfaceDrewTheEnd(t *testing.T) {
 	m := newFadeModel()
 	m.send(fadeCmd{black: true, dur: time.Second})
-	t0 := time.Unix(100, 0)
+	t0 := m.base.Add(time.Minute)
 	a, done := m.step(t0)
 	require.Equal(t, 0.0, a)
 	require.False(t, done)
@@ -38,7 +38,7 @@ func TestFadeKeepsTickingUntilEverySurfaceDrewTheEnd(t *testing.T) {
 	require.Equal(t, 1.0, a)
 	require.True(t, done)
 	require.True(t, m.animatingAt(after), "surface A still needs a redraw")
-	require.False(t, m.animatingAt(t0.Add(time.Second+2*fadeTick)))
+	require.False(t, m.animatingAt(t0.Add(time.Hour)))
 }
 
 func TestFadeLayerIsClickThroughOverlayOnEveryOutput(t *testing.T) {
