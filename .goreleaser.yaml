@@ -1,0 +1,142 @@
+# Builds the GitHub release for a pushed v* tag (.github/workflows/release.yml)
+# and generates the neferafk-bin PKGBUILD. The workflow verifies that PKGBUILD
+# with makepkg before it pushes it to the AUR, so GoReleaser never uploads it.
+version: 2
+
+project_name: neferafk
+
+before:
+  hooks:
+    - go mod verify
+
+builds:
+  - id: neferafk
+    main: ./cmd/neferafk
+    binary: neferafk
+    env:
+      - CGO_ENABLED=0
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+      - -buildmode=pie
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    # Same inputs give the same binary.
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: neferafk
+    ids: [neferafk]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    # Everything the PKGBUILD package() installs, at the paths of the repo.
+    files:
+      - LICENSE
+      - README.md
+      - examples/config
+      - packaging/neferafk.pam
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+git:
+  tag_sort: -version:refname
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^style(\\([^)]+\\))?:"
+      - "^test(\\([^)]+\\))?:"
+  groups:
+    - title: Added
+      regexp: "^feat(\\([^)]+\\))?!?:"
+      order: 0
+    - title: Fixed
+      regexp: "^fix(\\([^)]+\\))?!?:"
+      order: 1
+    - title: Performance
+      regexp: "^perf(\\([^)]+\\))?!?:"
+      order: 2
+    - title: Changed
+      regexp: "^(refactor|build)(\\([^)]+\\))?!?:"
+      order: 3
+    - title: Documentation
+      regexp: "^docs(\\([^)]+\\))?!?:"
+      order: 4
+    - title: Maintenance
+      regexp: "^(chore|ci)(\\([^)]+\\))?!?:"
+      order: 5
+    - title: Other changes
+      order: 999
+
+release:
+  github:
+    owner: bnema
+    name: neferafk
+  draft: false
+  prerelease: auto
+  mode: replace
+  header: |
+    ## neferafk {{ .Tag }}
+
+    ### Install on Arch Linux
+
+    ```sh
+    paru -S neferafk-bin   # this release, pre-built (x86_64, aarch64)
+    paru -S neferafk-git   # latest main, built from source
+    ```
+
+    ### Install the pre-built archive
+
+    Linux amd64 and arm64. Replace `amd64` with `arm64` on ARM.
+
+    ```sh
+    gh release download {{ .Tag }} -R bnema/neferafk -p 'neferafk_{{ .Version }}_linux_amd64.tar.gz' -p checksums.txt
+    sha256sum -c --ignore-missing checksums.txt
+    gh attestation verify neferafk_{{ .Version }}_linux_amd64.tar.gz -R bnema/neferafk
+    ```
+
+    The archive holds the `neferafk` binary, the PAM service file `neferafk.pam` (install it as `/etc/pam.d/neferafk` for password mode), an example config, the README and the license. See the [README](https://github.com/bnema/neferafk#readme) for runtime dependencies.
+  footer: |
+    ---
+
+    **Full changelog**: https://github.com/bnema/neferafk/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+aurs:
+  - name: neferafk-bin
+    ids: [neferafk]
+    homepage: https://github.com/bnema/neferafk
+    description: "Idle daemon for Wayland: fade, session lock, screens off and suspend"
+    maintainers:
+      - "bnema <b at bnema dot dev>"
+    license: GPL-3.0-only
+    # The release workflow verifies and publishes the generated PKGBUILD.
+    skip_upload: true
+    provides: [neferafk]
+    conflicts: [neferafk, neferafk-git]
+    # Loaded at runtime (purego, no cgo): not seen by makepkg's library scan.
+    depends:
+      - glibc
+      - pam
+      - libxkbcommon
+      - vulkan-icd-loader
+      - vulkan-driver
+      - systemd
+      - ttf-dejavu # lock screen monospace font (DejaVu Sans Mono)
+    optdepends:
+      - "pass: PIN source for auth.mode = pin"
+    backup:
+      - etc/pam.d/neferafk
+    package: |-
+      install -Dm755 ./neferafk "${pkgdir}/usr/bin/neferafk"
+      install -Dm644 ./packaging/neferafk.pam "${pkgdir}/etc/pam.d/neferafk"
+      install -Dm644 ./examples/config "${pkgdir}/usr/share/doc/neferafk/config.example"
+      install -Dm644 ./README.md "${pkgdir}/usr/share/doc/neferafk/README.md"
+      install -Dm644 ./LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
