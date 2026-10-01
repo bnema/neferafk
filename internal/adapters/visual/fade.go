@@ -18,12 +18,16 @@ type fadeCmd struct {
 	dur   time.Duration
 }
 
-// fadeModel is the overlay's animation state. The view (NeferGUI owner loop)
-// owns the fields below "owned"; other goroutines only use send.
+// fadeModel is the overlay's animation state, shared by the surfaces of every
+// output. The view (NeferGUI owner loop) owns the fields below "owned"; other
+// goroutines only use send and animatingAt.
 type fadeModel struct {
-	cmds      chan fadeCmd
-	wake      chan struct{}
-	animating atomic.Bool
+	cmds chan fadeCmd
+	wake chan struct{}
+	// tickUntil (UnixNano) keeps redraws coming until every surface has drawn
+	// a frame after the fade ended. It must not depend on which surface drew
+	// last: a wake redraws all surfaces, but each draws at its own instant.
+	tickUntil atomic.Int64
 	// finish ends the run once a reveal completed; set by the runner before
 	// the loop starts.
 	finish context.CancelFunc
@@ -76,9 +80,22 @@ func fadeCSS(a float64) string {
 	return fmt.Sprintf("width:100%%;height:100%%;background-color:rgb(0 0 0 / %.1f%%)", a*100)
 }
 
+// animatingAt reports whether the ticker must still request redraws.
+func (m *fadeModel) animatingAt(now time.Time) bool {
+	return now.UnixNano() < m.tickUntil.Load()
+}
+
 // fadeView applies queued retargets, then draws the overlay for this instant.
 func fadeView(f *nefergui.Frame, m *fadeModel) {
-	now := time.Now()
+	a, done := m.step(time.Now())
+	f.Root(nefergui.Inline(fadeCSS(a)))
+	if done && m.started && m.to == 0 && m.finish != nil {
+		m.finish()
+	}
+}
+
+// step applies queued retargets and returns the opacity at now.
+func (m *fadeModel) step(now time.Time) (float64, bool) {
 	for {
 		select {
 		case c := <-m.cmds:
@@ -88,17 +105,14 @@ func fadeView(f *nefergui.Frame, m *fadeModel) {
 				m.to = 1
 			}
 			m.start, m.dur, m.started = now, c.dur, true
+			// Two ticks past the end: every surface draws the final opacity.
+			m.tickUntil.Store(now.Add(c.dur + 2*fadeTick).UnixNano())
 			continue
 		default:
 		}
 		break
 	}
-	a, done := fadeAlpha(m.from, m.to, m.start, m.dur, now)
-	m.animating.Store(!done)
-	f.Root(nefergui.Inline(fadeCSS(a)))
-	if done && m.started && m.to == 0 && m.finish != nil {
-		m.finish()
-	}
+	return fadeAlpha(m.from, m.to, m.start, m.dur, now)
 }
 
 // fadeRunner runs the overlay until ctx ends or a reveal completes.
@@ -120,8 +134,8 @@ func (guiFader) RunFade(ctx context.Context, m *fadeModel) error {
 			select {
 			case <-ctx.Done():
 				return
-			case <-t.C:
-				if m.animating.Load() {
+			case now := <-t.C:
+				if m.animatingAt(now) {
 					m.poke()
 				}
 			}
