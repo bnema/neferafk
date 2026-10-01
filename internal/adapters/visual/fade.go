@@ -2,10 +2,12 @@ package visual
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync/atomic"
 	"time"
 
+	"github.com/bnema/neferclient"
 	"github.com/bnema/nefergui"
 )
 
@@ -124,55 +126,123 @@ type fadeRunner interface {
 	RunFade(ctx context.Context, m *fadeModel) error
 }
 
-// guiFader renders the overlay as a click-through layer-shell surface.
+// guiFader renders the overlay as one click-through layer-shell surface per
+// output, on its own Wayland connection.
 type guiFader struct{}
 
-func (guiFader) RunFade(ctx context.Context, m *fadeModel) error {
+func (guiFader) RunFade(ctx context.Context, m *fadeModel) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	m.finish = cancel
-	go func() {
-		t := time.NewTicker(fadeTick)
-		defer t.Stop()
-		was := false
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case now := <-t.C:
-				// One more poke when animation stops: even a starved ticker
-				// then wakes every surface at least once past the end.
-				animating := m.animatingAt(now)
-				if animating || was {
-					m.poke()
-				}
-				was = animating
-			}
+	conn, err := neferclient.Connect(ctx, "")
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil
 		}
-	}()
-	err := nefergui.Run(ctx, m, fadeView,
-		nefergui.Title("neferafk-fade"),
-		nefergui.Size(64, 64),
-		nefergui.Transparent(),
-		nefergui.Wake(m.wake),
-		nefergui.Layer(fadeLayer()),
-	)
-	if ctx.Err() != nil && err == context.Canceled {
-		return nil
+		return fmt.Errorf("connect: %w", err)
 	}
-	return err
+	f := &fader{m: m}
+	f.screens = newScreens(conn)
+	defer func() { err = errors.Join(err, conn.Close(), f.closeAll()) }()
+	for _, o := range conn.Outputs() {
+		if err = f.cover(o); err != nil {
+			return err
+		}
+	}
+	go fadeTicker(ctx, m)
+	var retry <-chan time.Time
+	for {
+		select {
+		case <-ctx.Done():
+			return nil // cancelled, or the reveal finished
+		case <-conn.Wake():
+			if err = conn.Dispatch(f); err != nil {
+				return fmt.Errorf("dispatch: %w", err)
+			}
+		case <-m.wake:
+			f.invalidateAll()
+		case <-retry:
+		}
+		if f.err != nil {
+			return f.err
+		}
+		pending, err := f.drawAll()
+		if err != nil {
+			return err
+		}
+		retry = nil
+		if pending {
+			retry = time.After(gpuRetry)
+		}
+	}
 }
 
-// fadeLayer: overlay on every output, all anchors, no keyboard, fully
-// click-through.
-func fadeLayer() nefergui.LayerConfig {
-	return nefergui.LayerConfig{
-		AllOutputs:    true,
+type fader struct {
+	*screens
+	m *fadeModel
+}
+
+// cover adds the overlay surface of an output.
+func (f *fader) cover(o neferclient.Output) error {
+	surf, err := f.conn.NewLayerSurface(fadeLayer(o.Name))
+	if err != nil {
+		return fmt.Errorf("fade surface for output %s: %w", o.Name, err)
+	}
+	s := newScreen(f.conn, surf, o, true)
+	s.view = func(fr *nefergui.Frame) { fadeView(fr, f.m) }
+	f.add(s)
+	return nil
+}
+
+// OutputAdded covers an output that appeared during the fade.
+func (f *fader) OutputAdded(o *neferclient.Output) {
+	if !f.covers(o.Global) {
+		if err := f.cover(*o); err != nil {
+			f.fail(err)
+		}
+	}
+}
+
+// Closed: the compositor closed an overlay surface.
+func (f *fader) Closed(id neferclient.SurfaceID) {
+	if s := f.byID[id]; s != nil {
+		if err := f.forget(s); err != nil {
+			f.fail(err)
+		}
+	}
+}
+
+// fadeTicker requests redraws while the fade animates.
+func fadeTicker(ctx context.Context, m *fadeModel) {
+	t := time.NewTicker(fadeTick)
+	defer t.Stop()
+	was := false
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-t.C:
+			// One more poke when animation stops: even a starved ticker then
+			// wakes every surface at least once past the end.
+			animating := m.animatingAt(now)
+			if animating || was {
+				m.poke()
+			}
+			was = animating
+		}
+	}
+}
+
+// fadeLayer: overlay on one output, all anchors, no keyboard, fully
+// click-through. An empty output name lets the compositor choose.
+func fadeLayer(output string) neferclient.LayerConfig {
+	return neferclient.LayerConfig{
+		Output:        output,
 		Namespace:     "neferafk-fade",
-		Level:         nefergui.LayerOverlay,
-		Anchors:       nefergui.AnchorTop | nefergui.AnchorBottom | nefergui.AnchorLeft | nefergui.AnchorRight,
-		Keyboard:      nefergui.KeyboardNone,
+		Level:         neferclient.LayerOverlay,
+		Anchors:       neferclient.AnchorTop | neferclient.AnchorBottom | neferclient.AnchorLeft | neferclient.AnchorRight,
+		Keyboard:      neferclient.KeyboardNone,
 		ExclusiveZone: -1,
-		InputRects:    []nefergui.Rect{},
+		InputRects:    []neferclient.Rect{},
 	}
 }

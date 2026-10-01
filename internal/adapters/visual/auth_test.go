@@ -9,7 +9,6 @@ import (
 
 	"github.com/bnema/neferafk/internal/adapters/auth"
 	"github.com/bnema/neferafk/internal/ports"
-	"github.com/bnema/nefergui"
 	"github.com/bnema/zerowrap"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -124,7 +123,7 @@ func TestDeniedStaysLockedAndAllowsRetry(t *testing.T) {
 	c.submit([]byte("bad"))
 	f := w.attempt(t)
 	w.result(t, f.Attempt, ports.AuthDenied)
-	for recv(t, c.status) != nefergui.LockFailed {
+	for recv(t, c.status) != lockFailed {
 	}
 	select {
 	case <-c.unlock:
@@ -148,7 +147,7 @@ func TestWorkerCrashStaysLockedAndRespawnsOnNextAttempt(t *testing.T) {
 	w1.attempt(t)
 	w1.toVisual.Close() // worker died mid-attempt
 	recv(t, w1.killed)
-	for recv(t, c.status) != nefergui.LockFailed {
+	for recv(t, c.status) != lockFailed {
 	}
 	require.False(t, c.succeeded.Load())
 	w2 := expectWorker(t, l)
@@ -170,7 +169,7 @@ func TestWatchdogKillsHungWorkerAndStaysLocked(t *testing.T) {
 	c.submit([]byte("x"))
 	w.attempt(t) // no result ever comes
 	recv(t, w.killed)
-	for recv(t, c.status) != nefergui.LockFailed {
+	for recv(t, c.status) != lockFailed {
 	}
 	select {
 	case <-c.unlock:
@@ -271,14 +270,14 @@ func TestControllerKillsWorkerOnStaleGenerationOrAttempt(t *testing.T) {
 			w.ready(t)
 			c.submit([]byte("first"))
 			w.result(t, w.attempt(t).Attempt, ports.AuthDenied)
-			for recv(t, c.status) != nefergui.LockFailed {
+			for recv(t, c.status) != lockFailed {
 			}
 			c.submit([]byte("second")) // attempt 2: attempt 1 is now stale
 			f := w.attempt(t)
 			require.EqualValues(t, 2, f.Attempt)
 			require.NoError(t, auth.WriteFrame(w.toVisual, mk(f.Attempt)))
 			recv(t, w.killed)
-			for recv(t, c.status) != nefergui.LockFailed {
+			for recv(t, c.status) != lockFailed {
 			}
 			select {
 			case <-c.unlock:

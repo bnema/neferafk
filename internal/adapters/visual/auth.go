@@ -8,7 +8,6 @@ import (
 
 	"github.com/bnema/neferafk/internal/adapters/auth"
 	"github.com/bnema/neferafk/internal/ports"
-	"github.com/bnema/nefergui"
 	"github.com/bnema/zerowrap"
 )
 
@@ -80,7 +79,7 @@ type authController struct {
 	timeout  time.Duration
 
 	submits chan []byte
-	status  chan nefergui.LockStatus
+	status  chan lockStatus
 	unlock  chan struct{}
 	wake    chan struct{}
 
@@ -99,7 +98,7 @@ type authController struct {
 func newAuthController(log zerowrap.Logger, l workerLauncher, boot ports.AuthBootstrap, timeout time.Duration) *authController {
 	return &authController{
 		log: log.WithField("component", "visual-auth"), launcher: l, boot: boot, timeout: timeout,
-		submits: make(chan []byte, 1), status: make(chan nefergui.LockStatus, 8),
+		submits: make(chan []byte, 1), status: make(chan lockStatus, 8),
 		unlock: make(chan struct{}, 1), wake: make(chan struct{}, 1),
 	}
 }
@@ -115,7 +114,7 @@ func (c *authController) submit(secret []byte) {
 	}
 }
 
-func (c *authController) setStatus(s nefergui.LockStatus) {
+func (c *authController) setStatus(s lockStatus) {
 	for {
 		select {
 		case c.status <- s:
@@ -272,7 +271,7 @@ func (c *authController) workerLost(failed bool) {
 		c.setPrompt(promptNone)
 	}
 	if failed || inFlight {
-		c.setStatus(nefergui.LockFailed)
+		c.setStatus(lockFailed)
 	}
 }
 
@@ -285,12 +284,12 @@ func (c *authController) onSubmit(ctx context.Context, s []byte) {
 	case phaseNoWorker:
 		clear(c.pending)
 		c.pending = s
-		c.setStatus(nefergui.LockBusy)
+		c.setStatus(lockBusy)
 		c.spawn(ctx)
 		if c.w == nil { // launch failed
 			clear(c.pending)
 			c.pending = nil
-			c.setStatus(nefergui.LockFailed)
+			c.setStatus(lockFailed)
 		}
 	case phaseStarting: // keep only the latest submission
 		clear(c.pending)
@@ -308,7 +307,7 @@ func (c *authController) write(f ports.AuthFrame) bool {
 
 func (c *authController) sendAttempt(s []byte) {
 	c.attempt++
-	c.setStatus(nefergui.LockBusy)
+	c.setStatus(lockBusy)
 	c.ph = phaseAttempt
 	c.arm()
 	if !c.write(ports.AuthFrame{Kind: ports.AuthAttempt, Generation: c.boot.Generation, Attempt: c.attempt, Payload: s}) {
@@ -317,7 +316,7 @@ func (c *authController) sendAttempt(s []byte) {
 }
 
 func (c *authController) sendSecret(s []byte) {
-	c.setStatus(nefergui.LockBusy)
+	c.setStatus(lockBusy)
 	c.ph = phaseAttempt
 	c.arm()
 	if !c.write(ports.AuthFrame{Kind: ports.AuthSecret, Generation: c.boot.Generation, Attempt: c.attempt, Payload: s}) {
@@ -369,7 +368,7 @@ func (c *authController) onFrame(m frameMsg) bool {
 		}
 		c.ph = phasePrompt
 		c.setPrompt(promptMore)
-		c.setStatus(nefergui.LockIdle)
+		c.setStatus(lockIdle)
 	case ports.AuthStatus:
 		// PAM text is deliberately never shown.
 	case ports.AuthResult:
@@ -385,7 +384,7 @@ func (c *authController) onFrame(m frameMsg) bool {
 			return true
 		}
 		c.ph = phaseReady
-		c.setStatus(nefergui.LockFailed)
+		c.setStatus(lockFailed)
 	default:
 		c.workerLost(true)
 	}

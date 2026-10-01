@@ -8,7 +8,6 @@ import (
 	"context"
 	"io"
 
-	"github.com/bnema/nefergui"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -421,7 +420,7 @@ func (_m *mocklockRunner) EXPECT() *mocklockRunner_Expecter {
 }
 
 // RunLock provides a mock function for the type mocklockRunner
-func (_mock *mocklockRunner) RunLock(ctx context.Context, cfg nefergui.LockConfig) error {
+func (_mock *mocklockRunner) RunLock(ctx context.Context, cfg lockConfig) error {
 	ret := _mock.Called(ctx, cfg)
 
 	if len(ret) == 0 {
@@ -429,7 +428,7 @@ func (_mock *mocklockRunner) RunLock(ctx context.Context, cfg nefergui.LockConfi
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, nefergui.LockConfig) error); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, lockConfig) error); ok {
 		r0 = returnFunc(ctx, cfg)
 	} else {
 		r0 = ret.Error(0)
@@ -444,20 +443,20 @@ type mocklockRunner_RunLock_Call struct {
 
 // RunLock is a helper method to define mock.On call
 //   - ctx context.Context
-//   - cfg nefergui.LockConfig
+//   - cfg lockConfig
 func (_e *mocklockRunner_Expecter) RunLock(ctx any, cfg any) *mocklockRunner_RunLock_Call {
 	return &mocklockRunner_RunLock_Call{Call: _e.mock.On("RunLock", ctx, cfg)}
 }
 
-func (_c *mocklockRunner_RunLock_Call) Run(run func(ctx context.Context, cfg nefergui.LockConfig)) *mocklockRunner_RunLock_Call {
+func (_c *mocklockRunner_RunLock_Call) Run(run func(ctx context.Context, cfg lockConfig)) *mocklockRunner_RunLock_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 nefergui.LockConfig
+		var arg1 lockConfig
 		if args[1] != nil {
-			arg1 = args[1].(nefergui.LockConfig)
+			arg1 = args[1].(lockConfig)
 		}
 		run(
 			arg0,
@@ -472,7 +471,7 @@ func (_c *mocklockRunner_RunLock_Call) Return(err error) *mocklockRunner_RunLock
 	return _c
 }
 
-func (_c *mocklockRunner_RunLock_Call) RunAndReturn(run func(ctx context.Context, cfg nefergui.LockConfig) error) *mocklockRunner_RunLock_Call {
+func (_c *mocklockRunner_RunLock_Call) RunAndReturn(run func(ctx context.Context, cfg lockConfig) error) *mocklockRunner_RunLock_Call {
 	_c.Call.Return(run)
 	return _c
 }

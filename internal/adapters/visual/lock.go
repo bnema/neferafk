@@ -15,15 +15,9 @@ import (
 
 var errLockWithoutAuth = errors.New("session lock ended without authentication success")
 
-// lockRunner is the session-lock seam over nefergui.RunLock.
+// lockRunner is the session-lock seam over guiLocker.
 type lockRunner interface {
-	RunLock(ctx context.Context, cfg nefergui.LockConfig) error
-}
-
-type guiLocker struct{}
-
-func (guiLocker) RunLock(ctx context.Context, cfg nefergui.LockConfig) error {
-	return nefergui.RunLock(ctx, cfg)
+	RunLock(ctx context.Context, cfg lockConfig) error
 }
 
 // Config wires the visual process: fd 3 commands in, fd 4 events out.
@@ -215,7 +209,7 @@ func (s *session) startFade(ctx context.Context) *fadeRun {
 	return f
 }
 
-// startLock runs RunLock with the lock view and a private auth controller. The
+// startLock runs the session lock with the lock view and a private auth controller. The
 // lock context is detached from process signals: it ends only with RunLock.
 func (s *session) startLock(ctx context.Context, c ports.VisualLock) *lockRun {
 	lctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
@@ -226,22 +220,16 @@ func (s *session) startLock(ctx context.Context, c ports.VisualLock) *lockRun {
 	}
 	go func() { defer close(l.authDone); ctl.run(lctx) }()
 	go clockWake(lctx.Done(), ctl.wake)
-	go func() {
-		secret := nefergui.NewSecretBuffer(ports.AuthMaxSecret)
-		err := s.locker.RunLock(lctx, lockConfig(s.log, ctl, secret, l.locked))
-		secret.Wipe()
-		l.done <- err
-	}()
+	go func() { l.done <- s.locker.RunLock(lctx, newLockConfig(s.log, ctl, l.locked)) }()
 	return l
 }
 
-// lockConfig wires NeferGUI's lock loop to the auth controller. OnSubmit only
+// newLockConfig wires the lock loop to the auth controller. OnSubmit only
 // copies the secret; the controller wipes the copy after writing it.
-func lockConfig(log zerowrap.Logger, ctl *authController, secret *nefergui.SecretBuffer, locked chan<- struct{}) nefergui.LockConfig {
+func newLockConfig(log zerowrap.Logger, ctl *authController, locked chan<- struct{}) lockConfig {
 	log = log.WithField("component", "visual-lock")
-	return nefergui.LockConfig{
-		Secret: secret,
-		View: func(f *nefergui.Frame, st nefergui.LockState) {
+	return lockConfig{
+		View: func(f *nefergui.Frame, st lockState) {
 			lockView(f, st, promptKind(ctl.prompt.Load()), time.Now())
 		},
 		OnLocked: func() {

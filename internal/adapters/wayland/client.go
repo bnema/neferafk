@@ -13,9 +13,9 @@ import (
 
 	"github.com/bnema/neferafk/internal/ports"
 	"github.com/bnema/wlturbo"
-	"github.com/bnema/wlturbo/protocol/core"
-	"github.com/bnema/wlturbo/protocol/idlenotify"
-	"github.com/bnema/wlturbo/protocol/outputpower"
+	core "github.com/bnema/go-wayland-bindings/client/wayland"
+	idlenotify "github.com/bnema/go-wayland-bindings/client/extidlenotify"
+	outputpower "github.com/bnema/go-wayland-bindings/client/wlroutputpowermanagement"
 	"github.com/bnema/zerowrap"
 )
 

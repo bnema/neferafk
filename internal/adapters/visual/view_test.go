@@ -5,7 +5,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/bnema/nefergui"
+	"github.com/bnema/neferclient"
 	"github.com/stretchr/testify/require"
 )
 
@@ -43,31 +43,31 @@ func TestFadeKeepsTickingUntilEverySurfaceDrewTheEnd(t *testing.T) {
 }
 
 func TestFadeLayerIsClickThroughOverlayOnEveryOutput(t *testing.T) {
-	l := fadeLayer()
-	require.True(t, l.AllOutputs)
-	require.Empty(t, l.Output)
-	require.Equal(t, nefergui.LayerOverlay, l.Level)
-	require.Equal(t, nefergui.KeyboardNone, l.Keyboard)
+	l := fadeLayer("DP-1")
+	require.Equal(t, "DP-1", l.Output)
+	require.Equal(t, neferclient.LayerOverlay, l.Level)
+	require.Equal(t, neferclient.KeyboardNone, l.Keyboard)
+	require.Equal(t, int32(-1), l.ExclusiveZone)
 	require.NotNil(t, l.InputRects)
 	require.Empty(t, l.InputRects)
-	all := nefergui.AnchorTop | nefergui.AnchorBottom | nefergui.AnchorLeft | nefergui.AnchorRight
+	all := neferclient.AnchorTop | neferclient.AnchorBottom | neferclient.AnchorLeft | neferclient.AnchorRight
 	require.Equal(t, all, l.Anchors)
 }
 
 func TestHintsShowStatusThenPromptNotesAndFitTheBox(t *testing.T) {
 	for _, tc := range []struct {
-		s    nefergui.LockStatus
+		s    lockStatus
 		p    promptKind
 		want string
 	}{
-		{nefergui.LockFailed, promptFallback, "Denied"},
-		{nefergui.LockFailed, promptMore, "Denied"},
-		{nefergui.LockBusy, promptPIN, "..."},
-		{nefergui.LockIdle, promptFallback, "PIN off, use password"},
-		{nefergui.LockIdle, promptUnavailable, "Authentication unavailable"},
-		{nefergui.LockIdle, promptMore, "Enter again"},
-		{nefergui.LockIdle, promptPassword, " "},
-		{nefergui.LockIdle, promptPIN, " "},
+		{lockFailed, promptFallback, "Denied"},
+		{lockFailed, promptMore, "Denied"},
+		{lockBusy, promptPIN, "..."},
+		{lockIdle, promptFallback, "PIN off, use password"},
+		{lockIdle, promptUnavailable, "Authentication unavailable"},
+		{lockIdle, promptMore, "Enter again"},
+		{lockIdle, promptPassword, " "},
+		{lockIdle, promptPIN, " "},
 	} {
 		got := hintFor(tc.s, tc.p)
 		require.Equal(t, tc.want, got)
@@ -76,13 +76,13 @@ func TestHintsShowStatusThenPromptNotesAndFitTheBox(t *testing.T) {
 }
 
 func TestMaskIsCappedToTheField(t *testing.T) {
-	mask, _ := maskFor(nefergui.LockState{Mask: 3}, promptPIN)
+	mask, _ := maskFor(lockState{Mask: 3}, promptPIN)
 	require.Equal(t, "●●●", mask)
-	mask, _ = maskFor(nefergui.LockState{Mask: 3}, promptFallback)
+	mask, _ = maskFor(lockState{Mask: 3}, promptFallback)
 	require.Equal(t, "•••_", mask)
-	mask, _ = maskFor(nefergui.LockState{Mask: 512}, promptPIN)
+	mask, _ = maskFor(lockState{Mask: 512}, promptPIN)
 	require.Equal(t, maxPINMask, utf8.RuneCountInString(mask))
-	mask, _ = maskFor(nefergui.LockState{Mask: 512}, promptPassword)
+	mask, _ = maskFor(lockState{Mask: 512}, promptPassword)
 	require.Equal(t, maxPasswordMask+1, utf8.RuneCountInString(mask))
 }
 
