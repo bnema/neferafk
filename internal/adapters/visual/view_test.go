@@ -53,9 +53,27 @@ func TestFadeLayerIsClickThroughOverlayOnEveryOutput(t *testing.T) {
 	require.Equal(t, all, l.Anchors)
 }
 
-func TestLabelsAndHintsNeverCarryInput(t *testing.T) {
-	require.Equal(t, "Locked", labelFor(promptNone))
-	require.Equal(t, "PIN", labelFor(promptPIN))
-	require.Equal(t, "Denied", hintFor(nefergui.LockFailed))
-	require.Equal(t, "...", hintFor(nefergui.LockBusy))
+func TestHintsShowStatusThenPromptNotes(t *testing.T) {
+	require.Equal(t, "Denied", hintFor(nefergui.LockFailed, promptFallback))
+	require.Equal(t, "...", hintFor(nefergui.LockBusy, promptPIN))
+	require.Equal(t, "PIN unavailable, use password", hintFor(nefergui.LockIdle, promptFallback))
+	require.Equal(t, "Authentication unavailable", hintFor(nefergui.LockIdle, promptUnavailable))
+	require.Equal(t, " ", hintFor(nefergui.LockIdle, promptPassword))
+	require.Equal(t, " ", hintFor(nefergui.LockIdle, promptPIN))
+}
+
+func TestMaskUsesCompactFieldForPIN(t *testing.T) {
+	s := nefergui.LockState{Mask: 3}
+	mask, css := maskFor(s, promptPIN)
+	require.Equal(t, "●●●", mask)
+	require.Equal(t, cssMaskPIN, css)
+	mask, css = maskFor(s, promptFallback)
+	require.Equal(t, "•••_", mask)
+	require.Equal(t, cssMask, css)
+}
+
+func TestUntilNextMinute(t *testing.T) {
+	now := time.Date(2026, 10, 1, 15, 7, 45, 0, time.UTC)
+	require.Equal(t, 15*time.Second, untilNextMinute(now))
+	require.Equal(t, time.Minute, untilNextMinute(now.Truncate(time.Minute)))
 }
