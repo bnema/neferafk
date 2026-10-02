@@ -5,7 +5,7 @@ go 1.27
 require (
 	github.com/bnema/go-wayland-bindings v0.1.0
 	github.com/bnema/neferclient v0.2.0
-	github.com/bnema/nefergui v0.6.0
+	github.com/bnema/nefergui v0.6.1
 	github.com/bnema/purego-pam v0.1.0
 	github.com/bnema/wlturbo v0.6.2
 	github.com/bnema/zerowrap v1.4.1
