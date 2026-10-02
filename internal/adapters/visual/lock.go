@@ -220,7 +220,9 @@ func (s *session) startLock(ctx context.Context, c ports.VisualLock) *lockRun {
 	}
 	go func() { defer close(l.authDone); ctl.run(lctx) }()
 	go clockWake(lctx.Done(), ctl.wake)
-	go func() { l.done <- s.locker.RunLock(lctx, newLockConfig(s.log, ctl, l.locked)) }()
+	lcfg := newLockConfig(s.log, ctl, l.locked)
+	lcfg.Output = c.Output
+	go func() { l.done <- s.locker.RunLock(lctx, lcfg) }()
 	return l
 }
 

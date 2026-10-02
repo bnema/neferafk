@@ -4,11 +4,14 @@
 //
 // Wire format, both directions (fd 3: daemon->visual, fd 4: visual->daemon):
 //
-//	"NAV1" | kind u8 | length u32 BE | payload
+//	"NAV2" | kind u8 | length u32 BE | payload
+//
+// The magic names the format version: the daemon re-executes its binary as
+// the visual, so an upgrade under a running daemon fails with ErrProtocol.
 //
 // Commands: 1 Fade {black u8, duration i64 ns BE}; 2 Lock {generation u64,
-// then three u32-length-prefixed byte strings: PINSource, PINReference,
-// EnvPIN}. Events: 3 LockConfirmed {generation u64}; 4 LockReleased
+// then four u32-length-prefixed byte strings: PINSource, PINReference,
+// EnvPIN, Output}. Events: 3 LockConfirmed {generation u64}; 4 LockReleased
 // {generation u64}. Process exit is observed by the launcher, not sent.
 package visualproc
 
@@ -28,13 +31,15 @@ const (
 	kindLock
 	kindConfirmed
 	kindReleased
-	maxPayload = 8 + 3*4 + 2*ports.AuthMaxMetadata + ports.AuthMaxSecret
+	maxPayload = 8 + 4*4 + 2*ports.AuthMaxMetadata + ports.AuthMaxSecret + ports.MaxOutputName
 )
+
+const magic = "NAV2"
 
 func writeFrame(w io.Writer, kind byte, payload []byte) error {
 	buf := make([]byte, 9+len(payload))
 	defer clear(buf)
-	copy(buf, "NAV1")
+	copy(buf, magic)
 	buf[4] = kind
 	binary.BigEndian.PutUint32(buf[5:], uint32(len(payload)))
 	copy(buf[9:], payload)
@@ -54,7 +59,7 @@ func readFrame(r io.Reader) (byte, []byte, error) {
 		return 0, nil, err
 	}
 	n := binary.BigEndian.Uint32(h[5:])
-	if string(h[:4]) != "NAV1" || n > maxPayload {
+	if string(h[:4]) != magic || n > maxPayload {
 		return 0, nil, ErrProtocol
 	}
 	p := make([]byte, n)
@@ -78,8 +83,8 @@ func WriteCommand(w io.Writer, cmd ports.VisualCommand) error {
 		return writeFrame(w, kindFade, p)
 	case ports.VisualLock:
 		a := c.Auth
-		fields := [][]byte{[]byte(a.PINSource), []byte(a.PINReference), a.EnvPIN}
-		if c.Generation == 0 || uint64(c.Generation) != a.Generation || len(fields[1]) > ports.AuthMaxMetadata || len(fields[2]) > ports.AuthMaxSecret || len(fields[0]) > 16 {
+		fields := [][]byte{[]byte(a.PINSource), []byte(a.PINReference), a.EnvPIN, []byte(c.Output)}
+		if c.Generation == 0 || uint64(c.Generation) != a.Generation || len(fields[1]) > ports.AuthMaxMetadata || len(fields[2]) > ports.AuthMaxSecret || len(fields[0]) > 16 || len(fields[3]) > ports.MaxOutputName {
 			return ErrProtocol
 		}
 		p := binary.BigEndian.AppendUint64(nil, uint64(c.Generation))
@@ -117,7 +122,7 @@ func ReadCommand(r io.Reader) (ports.VisualCommand, error) {
 		}
 		gen := binary.BigEndian.Uint64(p)
 		rest := p[8:]
-		var f [3][]byte
+		var f [4][]byte
 		for i := range f {
 			if len(rest) < 4 {
 				return nil, ErrProtocol
@@ -129,10 +134,10 @@ func ReadCommand(r io.Reader) (ports.VisualCommand, error) {
 			f[i] = rest[4 : 4+n]
 			rest = rest[4+n:]
 		}
-		if gen == 0 || len(rest) != 0 || len(f[0]) > 16 || len(f[1]) > ports.AuthMaxMetadata || len(f[2]) > ports.AuthMaxSecret {
+		if gen == 0 || len(rest) != 0 || len(f[0]) > 16 || len(f[1]) > ports.AuthMaxMetadata || len(f[2]) > ports.AuthMaxSecret || len(f[3]) > ports.MaxOutputName {
 			return nil, ErrProtocol
 		}
-		return ports.VisualLock{Generation: ports.Generation(gen), Auth: ports.AuthBootstrap{Generation: gen, PINSource: ports.PINSource(f[0]), PINReference: string(f[1]), EnvPIN: append([]byte(nil), f[2]...)}}, nil
+		return ports.VisualLock{Generation: ports.Generation(gen), Auth: ports.AuthBootstrap{Generation: gen, PINSource: ports.PINSource(f[0]), PINReference: string(f[1]), EnvPIN: append([]byte(nil), f[2]...)}, Output: string(f[3])}, nil
 	}
 	return nil, ErrProtocol
 }

@@ -213,7 +213,9 @@ func TestIdleActionsAreIndependentAndDisabledOnesNeverFire(t *testing.T) {
 }
 
 func TestActivityUndoesFadeWakesOutputsButNeverUnlocks(t *testing.T) {
-	h := newHarness(t, cfgOf(step, 2*step, 3*step, 0), nil)
+	cfg := cfgOf(step, 2*step, 3*step, 0)
+	cfg.LockOutput = "DP-2"
+	h := newHarness(t, cfg, nil)
 	locks := h.lockCapture()
 	fades := make(chan ports.VisualFade, 4)
 	h.visual.EXPECT().Fade(mock.Anything, mock.Anything).RunAndReturn(func(_ context.Context, f ports.VisualFade) error { fades <- f; return nil })
@@ -223,7 +225,7 @@ func TestActivityUndoesFadeWakesOutputsButNeverUnlocks(t *testing.T) {
 		h.send(ports.WaylandIdle{After: after})
 	}
 	l := lockOf(t, locks)
-	if l.Generation != 1 || l.Auth.Generation != 1 {
+	if l.Generation != 1 || l.Auth.Generation != 1 || l.Output != "DP-2" {
 		t.Fatalf("lock %+v", l)
 	}
 	h.visEv <- ports.LockConfirmed{Generation: l.Generation}

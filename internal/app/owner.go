@@ -358,7 +358,7 @@ func (o *Owner) startLock(ctx context.Context) error {
 	if !o.lockWanted() || o.lockGen == 0 {
 		return nil
 	}
-	err := o.opt.Visual.Lock(ctx, ports.VisualLock{Generation: o.lockGen, Auth: o.bootstrap(), Spawn: o.spawn()})
+	err := o.opt.Visual.Lock(ctx, ports.VisualLock{Generation: o.lockGen, Auth: o.bootstrap(), Output: o.cfg.LockOutput, Spawn: o.spawn()})
 	if err != nil {
 		o.log.Warn().Err(err).Uint64("generation", uint64(o.lockGen)).Dur("retry_in", o.delay).Msg("lock visual unavailable")
 		o.armRetry()

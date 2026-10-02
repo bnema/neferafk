@@ -80,6 +80,8 @@ func Parse(r io.Reader) (ports.Config, error) {
 			target = &cfg.OffAfter
 		case "sleep.after":
 			target = &cfg.SleepAfter
+		case "lock.output":
+			cfg.LockOutput = value
 		case "auth.mode":
 			cfg.Auth.Mode = ports.AuthMode(value)
 		case "auth.pin-source":

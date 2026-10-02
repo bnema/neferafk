@@ -36,10 +36,12 @@ type lockState struct {
 // lockConfig wires the session lock to its caller. Every callback runs on the
 // lock's owner goroutine.
 type lockConfig struct {
-	// View builds the content of the output that hosts it: the one whose
-	// surface has keyboard focus, initially the lowest output. Other outputs
-	// show plain black.
+	// View builds the content of the output that hosts it: Output while it
+	// is covered, otherwise the one whose surface has keyboard focus,
+	// initially the lowest output. Other outputs show plain black.
 	View func(*nefergui.Frame, lockState)
+	// Output is the preferred host output name; empty for none.
+	Output string
 	// OnLocked runs once when the compositor confirms the lock.
 	OnLocked func()
 	// OnOutputError reports an output added after the lock was acquired that
@@ -145,6 +147,7 @@ type locker struct {
 	seat    *neferclient.Seat
 	secret  *neferclient.SecretBuffer
 	host    *screen
+	focus   *screen // has keyboard focus; may differ from host on the preferred output
 	initial map[uint32]bool // outputs present at acquisition: their failures abort
 	status  lockStatus
 	unlock  bool // requested; honoured once locked
@@ -188,10 +191,17 @@ func (l *locker) cover(o neferclient.Output) error {
 	s := newScreen(l.conn, surf, o, false)
 	s.view = func(f *nefergui.Frame) { l.view(f, s) }
 	l.add(s)
-	if l.host == nil { // outputs are covered in ascending order: the lowest hosts
+	// Outputs are covered in ascending order: the lowest hosts until the
+	// preferred one appears.
+	if l.host == nil || l.preferred(s) {
 		l.setHost(s)
 	}
 	return nil
+}
+
+// preferred reports whether s is on the configured host output.
+func (l *locker) preferred(s *screen) bool {
+	return l.cfg.Output != "" && s.name == l.cfg.Output
 }
 
 // view shows the lock content on the host output and plain black elsewhere.
@@ -249,14 +259,21 @@ func (l *locker) errorPolicy(err error) error {
 	return nil
 }
 
-// forgetHost picks a new host when the host screen goes away.
+// forgetHost picks a new host when the host screen goes away: the preferred
+// output, else the focused screen, else the lowest output.
 func (l *locker) forgetHost() {
-	if l.host == nil || l.byID[l.host.surf.ID()] == l.host {
+	if !l.has(l.focus) {
+		l.focus = nil
+	}
+	if l.host == nil || l.has(l.host) {
 		return
 	}
-	l.host = nil
+	l.host = l.focus
 	for _, s := range l.byID {
-		if l.host == nil || s.output < l.host.output {
+		switch {
+		case l.preferred(s):
+			l.host = s
+		case l.host == nil || l.host != l.focus && !l.preferred(l.host) && s.output < l.host.output:
 			l.host = s
 		}
 	}
@@ -308,7 +325,14 @@ func (l *locker) LockFinished() {
 }
 
 func (l *locker) KeyboardFocus(id neferclient.SurfaceID, focused bool) {
-	if s := l.byID[id]; s != nil && focused {
+	// The secret buffer belongs to the seat, so typing works whichever
+	// surface has focus: the preferred output keeps the prompt.
+	s := l.byID[id]
+	if s == nil || !focused {
+		return
+	}
+	l.focus = s
+	if l.host == nil || !l.preferred(l.host) {
 		l.setHost(s)
 	}
 }

@@ -15,7 +15,16 @@ type Config struct {
 	LockAfter, FadeAfter, OffAfter, SleepAfter time.Duration
 	FadeDuration                               time.Duration
 	Auth                                       AuthConfig
+	// LockOutput names the output (wl_output name, e.g. DP-2) that shows the
+	// lock prompt. Empty, or absent: the output whose lock surface has
+	// keyboard focus, initially the first advertised one. A change applies
+	// from the next lock.
+	LockOutput string
 }
+
+// MaxOutputName bounds LockOutput: neferclient truncates longer wl_output
+// names, which could never match.
+const MaxOutputName = 64
 type AuthMode string
 
 const (
@@ -47,6 +56,9 @@ func (c Config) Validate() error {
 		if d < 0 || d > MaxDuration {
 			return fmt.Errorf("duration outside 0..24h")
 		}
+	}
+	if len(c.LockOutput) > MaxOutputName || !utf8.ValidString(c.LockOutput) || strings.ContainsFunc(c.LockOutput, unicode.IsControl) {
+		return fmt.Errorf("invalid lock output name")
 	}
 	a := c.Auth
 	for _, r := range []string{string(a.Mode), string(a.PINSource), a.PINEnv, a.PINEntry} {

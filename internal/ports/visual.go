@@ -58,10 +58,12 @@ type VisualSpawn struct{ OmitEnv []string }
 // VisualLock carries auth metadata only (config + the privately captured
 // startup PIN value when the env source is selected). Auth.Generation equals
 // Generation and is the nonzero epoch scoping every auth frame. The visual,
-// not the daemon, spawns the auth worker and forwards Auth to it.
+// not the daemon, spawns the auth worker and forwards Auth to it. Output is
+// Config.LockOutput.
 type VisualLock struct {
 	Generation Generation
 	Auth       AuthBootstrap
+	Output     string
 	Spawn      VisualSpawn
 }
 

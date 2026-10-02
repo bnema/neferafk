@@ -71,6 +71,7 @@ auth.mode = password
 | `fade.after` | duration or `off` | `6m` |
 | `fade.duration` | duration | `2s` |
 | `lock.after` | duration or `off` | `5m` |
+| `lock.output` | output name (e.g. `DP-2`) | none |
 | `screens.off-after` | duration or `off` | `7m` |
 | `sleep.after` | duration or `off` | `20m` |
 | `auth.mode` | `password` or `pin` | `password` |
@@ -79,6 +80,8 @@ auth.mode = password
 | `auth.pin-entry` | `pass` entry (with `pass`) | none |
 
 Durations use Go syntax (`30s`, `5m`, `1h`), up to 24h. The order of the actions comes from their delays: for example, `lock.after = 20s` with `screens.off-after = 50s` turns the screens off 30 seconds after the lock.
+
+The lock prompt shows on `lock.output` when that output is connected. Otherwise it follows the lock surface that has keyboard focus, which the compositor chooses. The other outputs show black. A change applies from the next lock. `wlr-randr` lists the output names.
 
 PIN mode compares a 6 to 32 digit PIN read from the daemon's environment or from `pass show ENTRY`. If the PIN source is unavailable or invalid, the lock asks for the password through PAM.
 

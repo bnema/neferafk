@@ -25,6 +25,20 @@ func TestRejectTransactionalBoundsUnknownDuplicateAndSecrets(t *testing.T) {
 		}
 	}
 }
+func TestLockOutput(t *testing.T) {
+	c, err := Parse(strings.NewReader("lock.output = DP-2\n"))
+	if err != nil || c.LockOutput != "DP-2" {
+		t.Fatal(c, err)
+	}
+	if _, err := Parse(strings.NewReader("lock.output = " + strings.Repeat("x", ports.MaxOutputName+1))); err == nil {
+		t.Fatal("oversized output name accepted")
+	}
+	cfg := ports.Defaults()
+	cfg.LockOutput = "DP\x01"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("control character in output name accepted")
+	}
+}
 func TestPassReferenceMetadataOnly(t *testing.T) {
 	c, err := Parse(strings.NewReader("auth.pin-source=pass\nauth.pin-entry=desktop/neferafk\n"))
 	if err != nil || c.Auth.PINEntry != "desktop/neferafk" {
