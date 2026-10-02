@@ -2,7 +2,7 @@
 
 NeferAFK is an idle daemon for Wayland compositors. It fades the screen, locks the session, turns the outputs off and suspends the machine after configurable idle delays.
 
-It uses standard protocols only: `ext-idle-notify-v1`, `ext-session-lock-v1`, `wlr-output-power-management-v1` and systemd-logind. The lock screen renders with [NeferGUI](https://github.com/bnema/nefergui) (Vulkan, DMA-BUF, explicit sync).
+It uses standard protocols only: `ext-idle-notify-v1`, `ext-session-lock-v1`, `wlr-output-power-management-v1` and systemd-logind. The lock screen and the fade use [neferclient](https://github.com/bnema/neferclient) for their Wayland surfaces and draw with [NeferGUI](https://github.com/bnema/nefergui) (Vulkan, DMA-BUF, explicit sync).
 
 ## Behaviour
 
@@ -90,6 +90,12 @@ With the defaults, the lock comes first and the fade then darkens the lock scree
 make check        # build, vet, tests, handwritten-double check, staticcheck
 make race         # race tests (CGO_ENABLED=1)
 make mocks-check  # Mockery v3 mocks are up to date
+```
+
+The lock and fade loops also have headless tests against a nested NeferWL compositor (two virtual outputs, a GPU render node needed). They never touch the running session:
+
+```sh
+NEFERAFK_HEADLESS=/usr/sbin/neferwl go test -run Headless ./internal/adapters/visual/
 ```
 
 ## License

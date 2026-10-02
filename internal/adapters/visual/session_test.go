@@ -10,7 +10,6 @@ import (
 
 	"github.com/bnema/neferafk/internal/adapters/visualproc"
 	"github.com/bnema/neferafk/internal/ports"
-	"github.com/bnema/nefergui"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -19,7 +18,7 @@ type harness struct {
 	cmdW   *io.PipeWriter
 	events *io.PipeReader
 	done   chan error
-	cfgs   chan nefergui.LockConfig
+	cfgs   chan lockConfig
 	l      *mockworkerLauncher
 	lock   *mocklockRunner
 	fade   *mockfadeRunner
@@ -30,14 +29,14 @@ type harness struct {
 func newHarness(t *testing.T) *harness { return newHarnessRun(t, nil) }
 
 // newHarnessRun is newHarness with an optional replacement RunLock body.
-func newHarnessRun(t *testing.T, runLock func(context.Context, nefergui.LockConfig) error) *harness {
+func newHarnessRun(t *testing.T, runLock func(context.Context, lockConfig) error) *harness {
 	t.Helper()
 	cmdR, cmdW := io.Pipe()
 	evR, evW := io.Pipe()
-	h := &harness{cmdW: cmdW, events: evR, done: make(chan error, 1), cfgs: make(chan nefergui.LockConfig, 1),
+	h := &harness{cmdW: cmdW, events: evR, done: make(chan error, 1), cfgs: make(chan lockConfig, 1),
 		l: newMockworkerLauncher(t), lock: newMocklockRunner(t), fade: newMockfadeRunner(t)}
 	if runLock == nil {
-		runLock = func(ctx context.Context, cfg nefergui.LockConfig) error {
+		runLock = func(ctx context.Context, cfg lockConfig) error {
 			h.cfgs <- cfg
 			select {
 			case <-cfg.Unlock:
@@ -78,7 +77,7 @@ func TestLockReleasedOnlyAfterAuthSuccess(t *testing.T) {
 	cfg.OnSubmit([]byte("bad"))
 	f := w.attempt(t)
 	w.result(t, f.Attempt, ports.AuthDenied)
-	require.Equal(t, nefergui.LockFailed, recvFailed(t, cfg.Status))
+	require.Equal(t, lockFailed, recvFailed(t, cfg.Status))
 	select {
 	case err := <-h.done:
 		t.Fatalf("session ended after denial: %v", err)
@@ -93,9 +92,9 @@ func TestLockReleasedOnlyAfterAuthSuccess(t *testing.T) {
 	recv(t, w.killed) // worker reaped with the lock
 }
 
-func recvFailed(t *testing.T, c <-chan nefergui.LockStatus) nefergui.LockStatus {
+func recvFailed(t *testing.T, c <-chan lockStatus) lockStatus {
 	for {
-		if s := recv(t, c); s == nefergui.LockFailed {
+		if s := recv(t, c); s == lockFailed {
 			return s
 		}
 	}
@@ -195,7 +194,7 @@ func (h *harness) noEvent(t *testing.T) {
 }
 
 func TestRunLockNilWithoutAuthSuccessNeverReleases(t *testing.T) {
-	h := newHarnessRun(t, func(context.Context, nefergui.LockConfig) error { return nil })
+	h := newHarnessRun(t, func(context.Context, lockConfig) error { return nil })
 	w := expectWorker(t, h.l)
 	h.sendLock(t)
 	w.bootstrap(t)
@@ -206,12 +205,12 @@ func TestRunLockNilWithoutAuthSuccessNeverReleases(t *testing.T) {
 
 func TestRunLockErrorNeverReleases(t *testing.T) {
 	for name, runErr := range map[string]error{
-		"finished": nefergui.ErrLockFinished,
-		"wrapped":  fmt.Errorf("compositor: %w", nefergui.ErrLockFinished),
+		"finished": errLockFinished,
+		"wrapped":  fmt.Errorf("compositor: %w", errLockFinished),
 		"other":    errors.New("boom"),
 	} {
 		t.Run(name, func(t *testing.T) {
-			h := newHarnessRun(t, func(context.Context, nefergui.LockConfig) error { return runErr })
+			h := newHarnessRun(t, func(context.Context, lockConfig) error { return runErr })
 			w := expectWorker(t, h.l)
 			h.sendLock(t)
 			w.bootstrap(t)

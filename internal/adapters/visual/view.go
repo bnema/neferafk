@@ -69,11 +69,11 @@ func fieldMargin(w int) int {
 
 // hintFor is the line under the input: the attempt status first, then a note
 // for prompts the bare field cannot convey. It never carries typed input.
-func hintFor(s nefergui.LockStatus, p promptKind) string {
+func hintFor(s lockStatus, p promptKind) string {
 	switch s {
-	case nefergui.LockBusy:
+	case lockBusy:
 		return "..."
-	case nefergui.LockFailed:
+	case lockFailed:
 		return "Denied"
 	}
 	switch p {
@@ -89,7 +89,7 @@ func hintFor(s nefergui.LockStatus, p promptKind) string {
 
 // maskFor is the field content and style: large dots for a PIN, bullets
 // plus a cursor for a password. The count is capped to the field width.
-func maskFor(s nefergui.LockState, p promptKind) (string, string) {
+func maskFor(s lockState, p promptKind) (string, string) {
 	if p == promptPIN {
 		return strings.Repeat("●", min(s.Mask, maxPINMask)), cssMaskPIN
 	}
@@ -97,7 +97,7 @@ func maskFor(s nefergui.LockState, p promptKind) (string, string) {
 }
 
 // UnlockBox draws the date line, the box and the balancing spacer.
-func UnlockBox(root nefergui.Node, s nefergui.LockState, p promptKind, now time.Time) {
+func UnlockBox(root nefergui.Node, s lockState, p promptKind, now time.Time) {
 	frame := root.Column(nefergui.Class("frame"), nefergui.Inline(cssFrame))
 	frame.Text(now.Format(clockLayout), nefergui.Key("clock"), nefergui.Inline(cssClock))
 	box := frame.Column(nefergui.Class("box"), nefergui.Key("box"), nefergui.Inline(cssBox))
@@ -109,7 +109,7 @@ func UnlockBox(root nefergui.Node, s nefergui.LockState, p promptKind, now time.
 }
 
 // lockView builds the whole lock screen.
-func lockView(f *nefergui.Frame, s nefergui.LockState, p promptKind, now time.Time) {
+func lockView(f *nefergui.Frame, s lockState, p promptKind, now time.Time) {
 	UnlockBox(f.Root(nefergui.Class("screen"), nefergui.Inline(cssScreen)), s, p, now)
 }
 

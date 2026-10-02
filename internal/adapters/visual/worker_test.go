@@ -29,7 +29,7 @@ func TestLockConfigReportsSkippedOutputWithComponent(t *testing.T) {
 	var buf bytes.Buffer
 	log := zerowrap.New(zerowrap.Config{Output: &buf})
 	ctl := newAuthController(testLog(), nil, boot(), time.Minute)
-	cfg := lockConfig(log, ctl, nil, make(chan struct{}, 1))
+	cfg := newLockConfig(log, ctl, make(chan struct{}, 1))
 	require.NotNil(t, cfg.OnOutputError)
 	cfg.OnOutputError("HDMI-A-1", errors.New("surface failed"))
 	out := buf.String()
