@@ -33,7 +33,7 @@ type Config struct {
 func Run(ctx context.Context, cfg Config) error {
 	s := &session{
 		log: cfg.Log.WithField("component", "visual"), cmds: cfg.Commands, events: cfg.Events,
-		locker: guiLocker{}, fader: guiFader{}, launcher: execLauncher{exe: cfg.Executable},
+		locker: guiLocker{}, fader: guiFader{log: cfg.Log.WithField("component", "visual-fade")}, launcher: execLauncher{exe: cfg.Executable},
 	}
 	return s.run(ctx)
 }
@@ -242,6 +242,11 @@ func newLockConfig(log zerowrap.Logger, ctl *authController, locked chan<- struc
 			// A hotplugged output we could not cover; the compositor keeps it
 			// black. Only the output name and the error are logged.
 			log.Warn().Err(err).Str("output", output).Msg("lock surface not created for output")
+		},
+		OnError: func(err error) {
+			// An event failure that leaves the keyboard usable. Messages
+			// come from neferclient and never carry typed input.
+			log.Warn().Err(err).Msg("lock event failed")
 		},
 		OnSubmit: ctl.submit,
 		Unlock:   ctl.unlock,

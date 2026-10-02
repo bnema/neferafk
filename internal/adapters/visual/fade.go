@@ -9,6 +9,7 @@ import (
 
 	"github.com/bnema/neferclient"
 	"github.com/bnema/nefergui"
+	"github.com/bnema/zerowrap"
 )
 
 // fadeTick is the redraw cadence while the fade animates.
@@ -128,9 +129,9 @@ type fadeRunner interface {
 
 // guiFader renders the overlay as one click-through layer-shell surface per
 // output, on its own Wayland connection.
-type guiFader struct{}
+type guiFader struct{ log zerowrap.Logger }
 
-func (guiFader) RunFade(ctx context.Context, m *fadeModel) (err error) {
+func (g guiFader) RunFade(ctx context.Context, m *fadeModel) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	m.finish = cancel
@@ -143,6 +144,12 @@ func (guiFader) RunFade(ctx context.Context, m *fadeModel) (err error) {
 	}
 	f := &fader{m: m}
 	f.screens = newScreens(conn)
+	// The overlay takes no input: an event failure only leaves the fade less
+	// smooth, so it is logged and the fade goes on.
+	f.screens.onError = func(err error) error {
+		g.log.Warn().Err(err).Msg("fade event failed")
+		return nil
+	}
 	defer func() { err = errors.Join(err, conn.Close(), f.closeAll()) }()
 	for _, o := range conn.Outputs() {
 		if err = f.cover(o); err != nil {

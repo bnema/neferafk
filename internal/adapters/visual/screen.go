@@ -3,6 +3,7 @@ package visual
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/bnema/neferclient"
@@ -227,11 +228,15 @@ type screens struct {
 	// after a feedback change); it returns the error that ends the run, or
 	// nil to drop only that screen.
 	onSetup func(s *screen, rebuild bool, err error) error
+	// onError reports an event error (Handler.Error); it returns the error
+	// that ends the run, or nil to go on.
+	onError func(err error) error
 }
 
 func newScreens(conn *neferclient.Conn) *screens {
 	ss := &screens{conn: conn, byID: map[neferclient.SurfaceID]*screen{}}
 	ss.onSetup = func(_ *screen, _ bool, err error) error { return err }
+	ss.onError = func(err error) error { return err }
 	return ss
 }
 
@@ -249,9 +254,27 @@ func (ss *screens) forget(s *screen) error {
 	return s.close()
 }
 
-// Error ends the run on a failure while handling an event (a keymap that
-// cannot be loaded, a configure that cannot be acknowledged...).
-func (ss *screens) Error(err error) { ss.fail(err) }
+// Error applies onError to a failure while handling an event. Connection
+// failures are not reported here: Conn.Dispatch returns them and they end
+// the run.
+func (ss *screens) Error(err error) {
+	if err = ss.onError(err); err != nil {
+		ss.fail(err)
+	}
+}
+
+// keyboardError reports whether a neferclient event error leaves the seat
+// without a usable keyboard (seat, keyboard or keymap setup). neferclient has
+// no typed errors for these, so its messages are matched.
+func keyboardError(err error) bool {
+	msg := err.Error()
+	for _, p := range [...]string{"neferclient: keymap", "neferclient: unsupported keymap", "neferclient: keyboard:", "neferclient: bind wl_seat"} {
+		if strings.HasPrefix(msg, p) {
+			return true
+		}
+	}
+	return false
+}
 
 func (ss *screens) setupFailed(s *screen, err error) {
 	if err = ss.onSetup(s, s.built, err); err != nil {

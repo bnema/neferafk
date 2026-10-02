@@ -45,6 +45,11 @@ type lockConfig struct {
 	// OnOutputError reports an output added after the lock was acquired that
 	// could not be covered; the compositor keeps it black.
 	OnOutputError func(output string, err error)
+	// OnError reports an event failure that does not end the lock (cursor,
+	// key repeat, one bad format entry...). Keyboard setup failures end the
+	// run instead: the caller starts a new lock connection while the session
+	// stays locked.
+	OnError func(err error)
 	// OnSubmit runs when Enter is pressed after locked with a non-empty
 	// secret. It must not block. secret is wiped right after it returns.
 	OnSubmit func(secret []byte)
@@ -91,6 +96,7 @@ func (guiLocker) RunLock(ctx context.Context, cfg lockConfig) (err error) {
 	l := &locker{cfg: cfg, secret: neferclient.NewSecretBuffer(lockSecretMax), initial: map[uint32]bool{}}
 	l.screens = newScreens(conn)
 	l.screens.onSetup = l.setupPolicy
+	l.screens.onError = l.errorPolicy
 	defer func() {
 		l.secret.Wipe()
 		err = errors.Join(err, conn.Close(), l.screens.closeAll())
@@ -227,6 +233,18 @@ func (l *locker) setupPolicy(s *screen, rebuild bool, err error) error {
 	}
 	if l.cfg.OnOutputError != nil {
 		l.cfg.OnOutputError(s.name, err)
+	}
+	return nil
+}
+
+// errorPolicy ends the run when the keyboard cannot work, as nobody could
+// type the secret; other event failures are reported and the lock goes on.
+func (l *locker) errorPolicy(err error) error {
+	if keyboardError(err) {
+		return err
+	}
+	if l.cfg.OnError != nil {
+		l.cfg.OnError(err)
 	}
 	return nil
 }

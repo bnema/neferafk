@@ -108,6 +108,7 @@ func TestHeadlessLockSubmitsTypedSecretAndUnlocksOnRequest(t *testing.T) {
 		OnLocked:      func() { locked <- struct{}{} },
 		OnSubmit:      func(secret []byte) { submits <- append([]byte(nil), secret...) },
 		OnOutputError: func(output string, _ error) { outputErrs <- output },
+		OnError:       func(err error) { outputErrs <- err.Error() },
 		Unlock:        unlock,
 		Status:        status,
 	}
@@ -151,7 +152,7 @@ func TestHeadlessFadeEndsAfterReveal(t *testing.T) {
 	m := newFadeModel()
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	done := make(chan error, 1)
-	go func() { done <- guiFader{}.RunFade(ctx, m) }()
+	go func() { done <- guiFader{log: testLog()}.RunFade(ctx, m) }()
 	t.Cleanup(func() { // before the compositor is killed, even on failure
 		cancel()
 		select {
