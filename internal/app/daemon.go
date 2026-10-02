@@ -77,6 +77,9 @@ func RunDaemon(ctx context.Context, o DaemonOptions) (result error) {
 		sys = nil
 		return &UnsupportedError{Missing: []string{"logind: " + err.Error()}}
 	}
+	if path, source := sys.Session(); path != "" {
+		log.Info().Str("session", path).Str("source", source).Msg("logind session bound")
+	}
 
 	uid := uint32(os.Getuid())
 	sockPath, err := control.DefaultPath()

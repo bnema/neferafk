@@ -20,6 +20,7 @@ const service = "org.freedesktop.login1"
 const managerPath dbus.ObjectPath = "/org/freedesktop/login1"
 const managerInterface = "org.freedesktop.login1.Manager"
 const sessionInterface = "org.freedesktop.login1.Session"
+const userInterface = "org.freedesktop.login1.User"
 const callTimeout = 3 * time.Second
 
 // Adapter is single-owner: Probe, Run and Close must not execute concurrently.
@@ -29,12 +30,14 @@ type Adapter struct {
 	requirements ports.SystemRequirements
 	owner        string
 	session      dbus.ObjectPath
-	caps         ports.SystemCapabilities
-	signals      chan *dbus.Signal
-	inhibitor    *os.File
-	cycle        uint64
-	preparing    bool
-	closed       bool
+	// sessionSource names how session was found, for diagnostics.
+	sessionSource string
+	caps          ports.SystemCapabilities
+	signals       chan *dbus.Signal
+	inhibitor     *os.File
+	cycle         uint64
+	preparing     bool
+	closed        bool
 }
 
 // Open connects only when requested. Calling it is unnecessary when all system
@@ -79,7 +82,8 @@ func (a *Adapter) property(ctx context.Context, path dbus.ObjectPath, iface, nam
 }
 
 // Probe is read-only: no Lock/Unlock/Suspend/Inhibit call. It resolves the
-// unique service owner, PID's session and its real UID; no user override exists.
+// unique service owner, the current session (PID, XDG_SESSION_ID or the user's
+// Display session) and its real UID; no user override exists.
 func (a *Adapter) Probe(ctx context.Context) error {
 	bounded, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
@@ -96,8 +100,10 @@ func (a *Adapter) Probe(ctx context.Context) error {
 	}
 	a.owner = owner
 	a.caps = ports.SystemCapabilities{}
+	a.session, a.sessionSource = "", ""
 	if a.requirements.Session {
-		body, err = a.currentSession(ctx)
+		var source string
+		body, source, err = a.currentSession(ctx)
 		if err != nil {
 			return err
 		}
@@ -120,7 +126,7 @@ func (a *Adapter) Probe(ctx context.Context) error {
 		if !ok || uid != uint32(os.Getuid()) {
 			return errors.New("session does not belong to real UID")
 		}
-		a.session = path
+		a.session, a.sessionSource = path, source
 		a.caps.Session = true
 	}
 	if a.requirements.Sleep {
@@ -161,21 +167,107 @@ func (a *Adapter) Probe(ctx context.Context) error {
 // currentSession resolves the process's session by PID. A compositor started
 // as a systemd user service runs outside the session scope, so its children
 // have no PID session; the session the display manager opened is then taken
-// from XDG_SESSION_ID. Probe checks either result against the real UID.
-func (a *Adapter) currentSession(ctx context.Context) ([]any, error) {
+// from XDG_SESSION_ID. A terminal launched by the compositor can inherit a
+// stale XDG_SESSION_ID, so the real UID's Display session is the last resort.
+// Fallback sessions must be live and graphical; Probe checks every result
+// against the real UID. It also returns which source chose the session.
+func (a *Adapter) currentSession(ctx context.Context) ([]any, string, error) {
 	body, err := a.call(ctx, managerPath, managerInterface+".GetSessionByPID", uint32(os.Getpid()))
 	if err == nil {
-		return body, nil
+		return body, "pid", nil
 	}
-	id := os.Getenv("XDG_SESSION_ID")
-	if id == "" {
-		return nil, fmt.Errorf("current process session unavailable: %w", err)
+	errs := []error{fmt.Errorf("PID: %w", err)}
+	if id := os.Getenv("XDG_SESSION_ID"); id != "" {
+		path, err := a.sessionByID(ctx, id)
+		if err == nil {
+			err = a.liveGraphical(ctx, path)
+		}
+		if err == nil {
+			return []any{path}, "XDG_SESSION_ID", nil
+		}
+		errs = append(errs, fmt.Errorf("XDG_SESSION_ID: %w", err))
 	}
-	body, idErr := a.call(ctx, managerPath, managerInterface+".GetSession", id)
-	if idErr != nil {
-		return nil, fmt.Errorf("current process session unavailable: %w; XDG_SESSION_ID: %w", err, idErr)
+	path, err := a.displaySession(ctx)
+	if err == nil {
+		err = a.liveGraphical(ctx, path)
 	}
-	return body, nil
+	if err == nil {
+		return []any{path}, "user display", nil
+	}
+	errs = append(errs, fmt.Errorf("user display session: %w", err))
+	return nil, "", fmt.Errorf("current process session unavailable: %w", errors.Join(errs...))
+}
+
+func (a *Adapter) sessionByID(ctx context.Context, id string) (dbus.ObjectPath, error) {
+	body, err := a.call(ctx, managerPath, managerInterface+".GetSession", id)
+	if err != nil {
+		return "", err
+	}
+	if len(body) != 1 {
+		return "", errors.New("invalid session reply")
+	}
+	path, ok := body[0].(dbus.ObjectPath)
+	if !ok || !path.IsValid() {
+		return "", errors.New("invalid session path")
+	}
+	return path, nil
+}
+
+// liveGraphical rejects tty, closing and lingering sessions, so a fallback
+// never binds lock signals to a session the user is not looking at. "online"
+// (logged in, not foreground) is accepted so a daemon started while the user
+// is on another VT still binds; with two graphical sessions of the same user
+// a stale XDG_SESSION_ID may thus pick the background one (same UID only).
+func (a *Adapter) liveGraphical(ctx context.Context, path dbus.ObjectPath) error {
+	value, err := a.property(ctx, path, sessionInterface, "Type")
+	if err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	if t, _ := value.(string); t != "wayland" && t != "x11" {
+		return fmt.Errorf("%s: session type %q is not graphical", path, t)
+	}
+	value, err = a.property(ctx, path, sessionInterface, "State")
+	if err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	if s, _ := value.(string); s != "active" && s != "online" {
+		return fmt.Errorf("%s: session state %q is not live", path, s)
+	}
+	return nil
+}
+
+// displaySession returns the real UID's primary (Display) session from
+// logind. logind prefers a graphical one; liveGraphical enforces it.
+func (a *Adapter) displaySession(ctx context.Context) (dbus.ObjectPath, error) {
+	body, err := a.call(ctx, managerPath, managerInterface+".GetUser", uint32(os.Getuid()))
+	if err != nil {
+		return "", err
+	}
+	if len(body) != 1 {
+		return "", errors.New("invalid user reply")
+	}
+	user, ok := body[0].(dbus.ObjectPath)
+	if !ok || !user.IsValid() {
+		return "", errors.New("invalid user path")
+	}
+	value, err := a.property(ctx, user, userInterface, "Display")
+	if err != nil {
+		return "", err
+	}
+	fields, ok := value.([]any)
+	if !ok || len(fields) != 2 {
+		return "", errors.New("invalid user Display property")
+	}
+	path, ok := fields[1].(dbus.ObjectPath)
+	if !ok || !path.IsValid() || path == "/" {
+		return "", errors.New("no display session")
+	}
+	return path, nil
+}
+
+// Session reports the bound session path and how it was found.
+func (a *Adapter) Session() (path, source string) {
+	return string(a.session), a.sessionSource
 }
 
 func (a *Adapter) Capabilities() ports.SystemCapabilities {

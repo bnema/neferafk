@@ -37,36 +37,165 @@ func TestProbeCurrentPIDRealUIDAndReadOnly(t *testing.T) {
 	if c := a.Capabilities(); !c.Session || !c.Suspend || c.DelayMax != 5*time.Second {
 		t.Fatalf("capabilities %+v", c)
 	}
+	if path, source := a.Session(); path != string(testSession) || source != "pid" {
+		t.Fatalf("session %q source %q", path, source)
+	}
 	// No mutating call was configured: generated mock rejects Inhibit/Suspend.
 }
 
+const testUser dbus.ObjectPath = "/org/freedesktop/login1/user/_1000"
+const staleSession dbus.ObjectPath = "/org/freedesktop/login1/session/c9"
+
+var errPID, errXDG, errUser = errors.New("pid lookup"), errors.New("xdg lookup"), errors.New("user lookup")
+
+// expectNoPIDSession answers the owner lookup and fails the PID session.
+func expectNoPIDSession(b *mockbus) {
+	b.EXPECT().call(mock.Anything, "org.freedesktop.DBus", dbus.ObjectPath("/org/freedesktop/DBus"), "org.freedesktop.DBus.GetNameOwner", []any{service}).Return([]any{testOwner}, nil).Once()
+	b.EXPECT().call(mock.Anything, testOwner, managerPath, managerInterface+".GetSessionByPID", []any{uint32(os.Getpid())}).Return(nil, errPID).Once()
+}
+func expectSessionProperty(b *mockbus, path dbus.ObjectPath, name string, value any) {
+	b.EXPECT().call(mock.Anything, testOwner, path, "org.freedesktop.DBus.Properties.Get", []any{sessionInterface, name}).Return([]any{dbus.MakeVariant(value)}, nil).Once()
+}
+
+// expectSessionKind answers Type, then State only when Type is graphical.
+func expectSessionKind(b *mockbus, path dbus.ObjectPath, typ, state string) {
+	expectSessionProperty(b, path, "Type", typ)
+	if typ == "wayland" || typ == "x11" {
+		expectSessionProperty(b, path, "State", state)
+	}
+}
+func expectSessionUID(b *mockbus, path dbus.ObjectPath, uid uint32) {
+	expectSessionProperty(b, path, "User", []any{uid, testUser})
+}
+
+// expectDisplay answers the GetUser + User.Display fallback with display.
+func expectDisplay(b *mockbus, display any) {
+	b.EXPECT().call(mock.Anything, testOwner, managerPath, managerInterface+".GetUser", []any{uint32(os.Getuid())}).Return([]any{testUser}, nil).Once()
+	b.EXPECT().call(mock.Anything, testOwner, testUser, "org.freedesktop.DBus.Properties.Get", []any{userInterface, "Display"}).Return([]any{dbus.MakeVariant(display)}, nil).Once()
+}
+
 // A compositor run as a systemd user service gives its children no PID
-// session; the display manager's XDG_SESSION_ID is used, UID-checked.
+// session; the display manager's live graphical XDG_SESSION_ID is used,
+// UID-checked.
 func TestProbeFallsBackToXDGSessionID(t *testing.T) {
 	t.Setenv("XDG_SESSION_ID", "c1")
 	for name, uid := range map[string]uint32{"same uid": uint32(os.Getuid()), "other uid": uint32(os.Getuid()) + 1} {
 		t.Run(name, func(t *testing.T) {
 			b := newMockbus(t)
-			b.EXPECT().call(mock.Anything, "org.freedesktop.DBus", dbus.ObjectPath("/org/freedesktop/DBus"), "org.freedesktop.DBus.GetNameOwner", []any{service}).Return([]any{testOwner}, nil).Once()
-			b.EXPECT().call(mock.Anything, testOwner, managerPath, managerInterface+".GetSessionByPID", []any{uint32(os.Getpid())}).Return(nil, errors.New("no session")).Once()
+			expectNoPIDSession(b)
 			b.EXPECT().call(mock.Anything, testOwner, managerPath, managerInterface+".GetSession", []any{"c1"}).Return([]any{testSession}, nil).Once()
-			b.EXPECT().call(mock.Anything, testOwner, testSession, "org.freedesktop.DBus.Properties.Get", []any{sessionInterface, "User"}).Return([]any{dbus.MakeVariant([]any{uid, dbus.ObjectPath("/org/freedesktop/login1/user/_1000")})}, nil).Once()
+			expectSessionKind(b, testSession, "wayland", "active")
+			expectSessionUID(b, testSession, uid)
 			a := newAdapter(b, ports.SystemRequirements{Session: true})
 			err := a.Probe(context.Background())
 			if ok := uid == uint32(os.Getuid()); ok != (err == nil) || ok != a.Capabilities().Session || ok != (a.session == testSession) {
 				t.Fatalf("err=%v caps=%+v session=%q", err, a.Capabilities(), a.session)
 			}
+			want := ""
+			if uid == uint32(os.Getuid()) {
+				want = "XDG_SESSION_ID"
+			}
+			if _, source := a.Session(); source != want {
+				t.Fatalf("source %q, want %q", source, want)
+			}
 		})
 	}
 }
 
-func TestProbeWithoutPIDSessionOrXDGSessionIDFails(t *testing.T) {
+// A terminal started by the compositor can inherit a stale XDG_SESSION_ID and
+// run outside any session scope. An unknown, non-graphical or closing XDG
+// session falls through to the real UID's live graphical Display session.
+func TestProbeFallsBackToDisplaySession(t *testing.T) {
+	cases := map[string]struct {
+		xdg       string
+		xdgExists bool
+		typ       string
+		state     string
+	}{
+		"no XDG_SESSION_ID":      {},
+		"unknown XDG_SESSION_ID": {xdg: "c9"},
+		"tty XDG_SESSION_ID":     {xdg: "c9", xdgExists: true, typ: "tty"},
+		"closing XDG_SESSION_ID": {xdg: "c9", xdgExists: true, typ: "wayland", state: "closing"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("XDG_SESSION_ID", tc.xdg)
+			b := newMockbus(t)
+			expectNoPIDSession(b)
+			switch {
+			case tc.xdgExists:
+				b.EXPECT().call(mock.Anything, testOwner, managerPath, managerInterface+".GetSession", []any{tc.xdg}).Return([]any{staleSession}, nil).Once()
+				expectSessionKind(b, staleSession, tc.typ, tc.state)
+			case tc.xdg != "":
+				b.EXPECT().call(mock.Anything, testOwner, managerPath, managerInterface+".GetSession", []any{tc.xdg}).Return(nil, errXDG).Once()
+			}
+			expectDisplay(b, []any{"c1", testSession})
+			expectSessionKind(b, testSession, "wayland", "active")
+			expectSessionUID(b, testSession, uint32(os.Getuid()))
+			a := newAdapter(b, ports.SystemRequirements{Session: true})
+			if err := a.Probe(context.Background()); err != nil || a.session != testSession || !a.Capabilities().Session {
+				t.Fatalf("err=%v session=%q", err, a.session)
+			}
+			if _, source := a.Session(); source != "user display" {
+				t.Fatalf("source %q", source)
+			}
+		})
+	}
+}
+
+func TestProbeRejectsDisplaySessionOfOtherUID(t *testing.T) {
 	t.Setenv("XDG_SESSION_ID", "")
 	b := newMockbus(t)
-	b.EXPECT().call(mock.Anything, "org.freedesktop.DBus", dbus.ObjectPath("/org/freedesktop/DBus"), "org.freedesktop.DBus.GetNameOwner", []any{service}).Return([]any{testOwner}, nil).Once()
-	b.EXPECT().call(mock.Anything, testOwner, managerPath, managerInterface+".GetSessionByPID", []any{uint32(os.Getpid())}).Return(nil, errors.New("no session")).Once()
-	if err := newAdapter(b, ports.SystemRequirements{Session: true}).Probe(context.Background()); err == nil {
-		t.Fatal("probe succeeded without any session")
+	expectNoPIDSession(b)
+	expectDisplay(b, []any{"c1", testSession})
+	expectSessionKind(b, testSession, "wayland", "active")
+	expectSessionUID(b, testSession, uint32(os.Getuid())+1)
+	a := newAdapter(b, ports.SystemRequirements{Session: true})
+	if err := a.Probe(context.Background()); err == nil || a.Capabilities().Session {
+		t.Fatal("other UID admitted through the Display fallback")
+	}
+}
+
+// Every source's cause stays inspectable through the joined error.
+func TestProbeWithoutAnySessionReportsEveryCause(t *testing.T) {
+	t.Setenv("XDG_SESSION_ID", "c9")
+	b := newMockbus(t)
+	expectNoPIDSession(b)
+	b.EXPECT().call(mock.Anything, testOwner, managerPath, managerInterface+".GetSession", []any{"c9"}).Return(nil, errXDG).Once()
+	b.EXPECT().call(mock.Anything, testOwner, managerPath, managerInterface+".GetUser", []any{uint32(os.Getuid())}).Return(nil, errUser).Once()
+	err := newAdapter(b, ports.SystemRequirements{Session: true}).Probe(context.Background())
+	for _, cause := range []error{errPID, errXDG, errUser} {
+		if !errors.Is(err, cause) {
+			t.Fatalf("err=%v lacks %v", err, cause)
+		}
+	}
+}
+
+func TestDisplaySessionRejectsMalformedReplies(t *testing.T) {
+	cases := map[string]struct {
+		user    []any
+		display any
+	}{
+		"empty user reply":   {user: []any{}},
+		"non-path user":      {user: []any{"_1000"}},
+		"display not tuple":  {user: []any{testUser}, display: "c1"},
+		"display short":      {user: []any{testUser}, display: []any{"c1"}},
+		"display not a path": {user: []any{testUser}, display: []any{"c1", "c1"}},
+		"no display session": {user: []any{testUser}, display: []any{"", dbus.ObjectPath("/")}},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			b := newMockbus(t)
+			b.EXPECT().call(mock.Anything, testOwner, managerPath, managerInterface+".GetUser", []any{uint32(os.Getuid())}).Return(tc.user, nil).Once()
+			if tc.display != nil {
+				b.EXPECT().call(mock.Anything, testOwner, testUser, "org.freedesktop.DBus.Properties.Get", []any{userInterface, "Display"}).Return([]any{dbus.MakeVariant(tc.display)}, nil).Once()
+			}
+			a := newAdapter(b, ports.SystemRequirements{Session: true})
+			a.owner = testOwner
+			if path, err := a.displaySession(context.Background()); err == nil {
+				t.Fatalf("accepted %q", path)
+			}
+		})
 	}
 }
 
