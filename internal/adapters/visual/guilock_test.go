@@ -7,56 +7,42 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// hostLocker builds a locker over screens keyed by surface ID. Only host
+// boundLocker builds a locker over screens keyed by surface ID. Only output
 // selection runs here: neither drawing nor the connection is used.
-func hostLocker(output string, byID map[neferclient.SurfaceID]*screen) *locker {
-	return &locker{cfg: lockConfig{Output: output}, screens: &screens{byID: byID}}
+func boundLocker(output string, byID map[neferclient.SurfaceID]*screen) *locker {
+	l := &locker{cfg: lockConfig{Output: output}, screens: &screens{byID: byID}}
+	l.rebind()
+	return l
 }
 
-func TestKeyboardFocusMovesHostOnlyWithoutPreferredOutput(t *testing.T) {
+func TestLockContentShowsOnEveryOutputByDefault(t *testing.T) {
 	hdmi := &screen{output: 49, name: "HDMI-A-1"}
 	dp := &screen{output: 50, name: "DP-2"}
 
-	l := hostLocker("", map[neferclient.SurfaceID]*screen{1: hdmi, 2: dp})
-	l.setHost(hdmi)
-	l.KeyboardFocus(2, true)
-	require.Same(t, dp, l.host, "without lock.output the prompt follows keyboard focus")
+	l := boundLocker("", map[neferclient.SurfaceID]*screen{1: hdmi, 2: dp})
+	require.True(t, l.shows(hdmi))
+	require.True(t, l.shows(dp))
 
-	l = hostLocker("DP-2", map[neferclient.SurfaceID]*screen{1: hdmi, 2: dp})
-	l.setHost(dp)
-	l.KeyboardFocus(1, true)
-	require.Same(t, dp, l.host, "the preferred output keeps the prompt")
-
-	l = hostLocker("DP-9", map[neferclient.SurfaceID]*screen{1: hdmi, 2: dp})
-	l.setHost(hdmi)
-	l.KeyboardFocus(2, true)
-	require.Same(t, dp, l.host, "an absent preferred output falls back to keyboard focus")
+	l = boundLocker("DP-9", map[neferclient.SurfaceID]*screen{1: hdmi, 2: dp})
+	require.True(t, l.shows(hdmi), "an absent lock.output shows the content everywhere")
+	require.True(t, l.shows(dp))
 }
 
-// forgetHost runs after a screen left byID: removed is the old host.
-func TestForgetHostPrefersConfiguredOutputThenFocusThenLowest(t *testing.T) {
-	removed := func() *screen { return &screen{output: 10, name: "GONE-1"} }
+func TestLockOutputBindsContentWhileCovered(t *testing.T) {
 	hdmi := &screen{output: 49, name: "HDMI-A-1"}
 	dp := &screen{output: 50, name: "DP-2"}
-	usb := &screen{output: 51, name: "DP-3"}
-	all := func() map[neferclient.SurfaceID]*screen {
-		return map[neferclient.SurfaceID]*screen{1: hdmi, 2: dp, 3: usb}
-	}
+	byID := map[neferclient.SurfaceID]*screen{1: hdmi, 2: dp}
 
-	l := hostLocker("DP-2", all())
-	l.host = removed()
-	l.focus = usb
-	l.forgetHost()
-	require.Same(t, dp, l.host, "the preferred output first, even over focus")
+	l := boundLocker("DP-2", byID)
+	require.False(t, l.shows(hdmi), "other outputs show black")
+	require.True(t, l.shows(dp))
 
-	l = hostLocker("", all())
-	l.host = removed()
-	l.focus = usb
-	l.forgetHost()
-	require.Same(t, usb, l.host, "then the focused screen")
+	delete(byID, 2) // DP-2 unplugged
+	l.rebind()
+	require.True(t, l.shows(hdmi), "the content returns to every output")
 
-	l = hostLocker("", all())
-	l.host = removed()
-	l.forgetHost()
-	require.Same(t, hdmi, l.host, "then the lowest output")
+	byID[3] = dp // DP-2 back
+	l.rebind()
+	require.False(t, l.shows(hdmi))
+	require.True(t, l.shows(dp))
 }

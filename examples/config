@@ -9,8 +9,8 @@ lock.after = 5m
 screens.off-after = 7m
 sleep.after = 20m
 
-# Output that shows the lock prompt (names from `wlr-randr`). Without it, the
-# prompt follows keyboard focus.
+# Only output that shows the lock prompt (names from `wlr-randr`). Without it,
+# every output shows the prompt.
 # lock.output = DP-2
 
 # password (PAM service /etc/pam.d/neferafk) or pin.

@@ -15,16 +15,16 @@ type Config struct {
 	LockAfter, FadeAfter, OffAfter, SleepAfter time.Duration
 	FadeDuration                               time.Duration
 	Auth                                       AuthConfig
-	// LockOutput names the output (wl_output name, e.g. DP-2) that shows the
-	// lock prompt. Empty, or absent: the output whose lock surface has
-	// keyboard focus, initially the first advertised one. A change applies
-	// from the next lock.
+	// LockOutput names the only output (wl_output name, e.g. DP-2) that
+	// shows the lock prompt while it is connected. Empty, or absent: every
+	// output shows it. A change applies from the next lock.
 	LockOutput string
 }
 
 // MaxOutputName bounds LockOutput: neferclient truncates longer wl_output
 // names, which could never match.
 const MaxOutputName = 64
+
 type AuthMode string
 
 const (
