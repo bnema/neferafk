@@ -333,16 +333,6 @@ func (ss *screens) OutputRemoved(global uint32) {
 	}
 }
 
-// has reports whether s is still one of the screens.
-func (ss *screens) has(s *screen) bool {
-	for _, t := range ss.byID {
-		if t == s {
-			return true
-		}
-	}
-	return false
-}
-
 // covers reports whether an output already has a screen.
 func (ss *screens) covers(global uint32) bool {
 	for _, s := range ss.byID {

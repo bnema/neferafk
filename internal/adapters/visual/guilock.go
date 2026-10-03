@@ -36,11 +36,10 @@ type lockState struct {
 // lockConfig wires the session lock to its caller. Every callback runs on the
 // lock's owner goroutine.
 type lockConfig struct {
-	// View builds the content of the output that hosts it: Output while it
-	// is covered, otherwise the one whose surface has keyboard focus,
-	// initially the lowest output. Other outputs show plain black.
+	// View builds the lock content. It shows on every output, or only on
+	// Output while that output is covered; other outputs then show black.
 	View func(*nefergui.Frame, lockState)
-	// Output is the preferred host output name; empty for none.
+	// Output binds the lock content to one output name; empty for all.
 	Output string
 	// OnLocked runs once when the compositor confirms the lock.
 	OnLocked func()
@@ -109,6 +108,7 @@ func (guiLocker) RunLock(ctx context.Context, cfg lockConfig) (err error) {
 		return fmt.Errorf("lock: %w", err)
 	}
 	outputs := conn.Outputs()
+	// A stable order keeps the first reported setup failure deterministic.
 	slices.SortFunc(outputs, func(a, b neferclient.Output) int { return cmp.Compare(a.Global, b.Global) })
 	for _, o := range outputs {
 		if err = l.cover(o); err != nil {
@@ -146,8 +146,7 @@ type locker struct {
 	lock    *neferclient.Lock
 	seat    *neferclient.Seat
 	secret  *neferclient.SecretBuffer
-	host    *screen
-	focus   *screen // has keyboard focus; may differ from host on the preferred output
+	bound   bool            // Output is covered: only it shows the lock content
 	initial map[uint32]bool // outputs present at acquisition: their failures abort
 	status  lockStatus
 	unlock  bool // requested; honoured once locked
@@ -171,12 +170,12 @@ func (l *locker) wait(ctx context.Context, retry <-chan time.Time) error {
 	case st, ok := <-l.cfg.Status:
 		if ok {
 			l.status = st
-			l.invalidateHost()
+			l.invalidateContent()
 		} else {
 			l.cfg.Status = nil
 		}
 	case <-l.cfg.Wake:
-		l.invalidateHost()
+		l.invalidateContent()
 	case <-retry:
 	}
 	return l.err
@@ -191,46 +190,49 @@ func (l *locker) cover(o neferclient.Output) error {
 	s := newScreen(l.conn, surf, o, false)
 	s.view = func(f *nefergui.Frame) { l.view(f, s) }
 	l.add(s)
-	// Outputs are covered in ascending order: the lowest hosts until the
-	// preferred one appears.
-	if l.host == nil || l.preferred(s) {
-		l.setHost(s)
-	}
+	l.rebind()
 	return nil
 }
 
-// preferred reports whether s is on the configured host output.
-func (l *locker) preferred(s *screen) bool {
-	return l.cfg.Output != "" && s.name == l.cfg.Output
+// rebind recomputes whether the configured output is covered and redraws
+// every output when that changes.
+func (l *locker) rebind() {
+	bound := false
+	if l.cfg.Output != "" {
+		for _, s := range l.byID {
+			bound = bound || s.name == l.cfg.Output
+		}
+	}
+	if bound != l.bound {
+		l.bound = bound
+		l.invalidateAll()
+	}
 }
 
-// view shows the lock content on the host output and plain black elsewhere.
+// view shows the lock content on every output, or only on the configured
+// output while it is covered; the others show plain black.
 func (l *locker) view(f *nefergui.Frame, s *screen) {
-	if s != l.host {
+	if !l.shows(s) {
 		f.Root(nefergui.Inline(cssBlack))
 		return
 	}
 	l.cfg.View(f, lockState{Mask: l.secret.Len(), Status: l.status})
 }
 
+// shows reports whether s shows the lock content.
+func (l *locker) shows(s *screen) bool { return !l.bound || s.name == l.cfg.Output }
+
+// invalidateContent redraws the outputs that show the lock content; black
+// outputs never change.
+func (l *locker) invalidateContent() {
+	for _, s := range l.byID {
+		if l.shows(s) {
+			s.invalidate()
+		}
+	}
+}
+
 const cssBlack = "width:100%;height:100%;background-color:#000000"
-
-func (l *locker) setHost(s *screen) {
-	if l.host == s {
-		return
-	}
-	if l.host != nil {
-		l.host.invalidate()
-	}
-	l.host = s
-	s.invalidate()
-}
-
-func (l *locker) invalidateHost() {
-	if l.host != nil {
-		l.host.invalidate()
-	}
-}
 
 // setupPolicy: the first renderer failure on an output present at acquisition
 // aborts the lock. A failure on a hotplugged output, or a rebuild after a
@@ -259,43 +261,21 @@ func (l *locker) errorPolicy(err error) error {
 	return nil
 }
 
-// forgetHost picks a new host when the host screen goes away: the preferred
-// output, else the focused screen, else the lowest output.
-func (l *locker) forgetHost() {
-	if !l.has(l.focus) {
-		l.focus = nil
-	}
-	if l.host == nil || l.has(l.host) {
-		return
-	}
-	l.host = l.focus
-	for _, s := range l.byID {
-		switch {
-		case l.preferred(s):
-			l.host = s
-		case l.host == nil || l.host != l.focus && !l.preferred(l.host) && s.output < l.host.output:
-			l.host = s
-		}
-	}
-	if l.host != nil {
-		l.host.invalidate()
-	}
-}
-
+// Configure, FeedbackDone and OutputRemoved may drop a screen.
 func (l *locker) Configure(id neferclient.SurfaceID, w, h int32) {
 	l.screens.Configure(id, w, h)
-	l.forgetHost()
+	l.rebind()
 }
 
 func (l *locker) FeedbackDone(id neferclient.SurfaceID) {
 	l.screens.FeedbackDone(id)
-	l.forgetHost()
+	l.rebind()
 }
 
 func (l *locker) OutputRemoved(global uint32) {
 	l.screens.OutputRemoved(global)
 	delete(l.initial, global)
-	l.forgetHost()
+	l.rebind()
 }
 
 // OutputAdded covers an output that appeared after the lock was requested.
@@ -314,7 +294,7 @@ func (l *locker) Locked() {
 	if l.err != nil {
 		return
 	}
-	l.invalidateHost()
+	l.invalidateContent()
 	if l.cfg.OnLocked != nil {
 		l.cfg.OnLocked()
 	}
@@ -324,20 +304,9 @@ func (l *locker) LockFinished() {
 	l.fail(errors.Join(errLockFinished, l.lock.Close()))
 }
 
-func (l *locker) KeyboardFocus(id neferclient.SurfaceID, focused bool) {
-	// The secret buffer belongs to the seat, so typing works whichever
-	// surface has focus: the preferred output keeps the prompt.
-	s := l.byID[id]
-	if s == nil || !focused {
-		return
-	}
-	l.focus = s
-	if l.host == nil || !l.preferred(l.host) {
-		l.setHost(s)
-	}
-}
-
-func (l *locker) SecretChanged(int) { l.invalidateHost() }
+// SecretChanged redraws the mask. The secret buffer belongs to the seat, so
+// typing works whichever lock surface has keyboard focus.
+func (l *locker) SecretChanged(int) { l.invalidateContent() }
 
 // Key handles the keys that are not secret text: Enter submits, Escape and
 // Ctrl+U clear. Before locked, Enter only clears.
@@ -364,5 +333,5 @@ func (l *locker) Key(ev *neferclient.KeyEvent) {
 
 func (l *locker) clearSecret() {
 	l.secret.Wipe()
-	l.invalidateHost()
+	l.invalidateContent()
 }
