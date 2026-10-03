@@ -108,6 +108,7 @@ func (guiLocker) RunLock(ctx context.Context, cfg lockConfig) (err error) {
 		return fmt.Errorf("lock: %w", err)
 	}
 	outputs := conn.Outputs()
+	// A stable order keeps the first reported setup failure deterministic.
 	slices.SortFunc(outputs, func(a, b neferclient.Output) int { return cmp.Compare(a.Global, b.Global) })
 	for _, o := range outputs {
 		if err = l.cover(o); err != nil {
@@ -169,12 +170,12 @@ func (l *locker) wait(ctx context.Context, retry <-chan time.Time) error {
 	case st, ok := <-l.cfg.Status:
 		if ok {
 			l.status = st
-			l.invalidateAll()
+			l.invalidateContent()
 		} else {
 			l.cfg.Status = nil
 		}
 	case <-l.cfg.Wake:
-		l.invalidateAll()
+		l.invalidateContent()
 	case <-retry:
 	}
 	return l.err
@@ -220,6 +221,16 @@ func (l *locker) view(f *nefergui.Frame, s *screen) {
 
 // shows reports whether s shows the lock content.
 func (l *locker) shows(s *screen) bool { return !l.bound || s.name == l.cfg.Output }
+
+// invalidateContent redraws the outputs that show the lock content; black
+// outputs never change.
+func (l *locker) invalidateContent() {
+	for _, s := range l.byID {
+		if l.shows(s) {
+			s.invalidate()
+		}
+	}
+}
 
 const cssBlack = "width:100%;height:100%;background-color:#000000"
 
@@ -283,7 +294,7 @@ func (l *locker) Locked() {
 	if l.err != nil {
 		return
 	}
-	l.invalidateAll()
+	l.invalidateContent()
 	if l.cfg.OnLocked != nil {
 		l.cfg.OnLocked()
 	}
@@ -295,7 +306,7 @@ func (l *locker) LockFinished() {
 
 // SecretChanged redraws the mask. The secret buffer belongs to the seat, so
 // typing works whichever lock surface has keyboard focus.
-func (l *locker) SecretChanged(int) { l.invalidateAll() }
+func (l *locker) SecretChanged(int) { l.invalidateContent() }
 
 // Key handles the keys that are not secret text: Enter submits, Escape and
 // Ctrl+U clear. Before locked, Enter only clears.
@@ -322,5 +333,5 @@ func (l *locker) Key(ev *neferclient.KeyEvent) {
 
 func (l *locker) clearSecret() {
 	l.secret.Wipe()
-	l.invalidateAll()
+	l.invalidateContent()
 }
