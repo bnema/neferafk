@@ -72,8 +72,9 @@ type Client struct {
 	deadlines        map[time.Duration]bool
 	generation, next uint64
 	dirty            bool
-	// screensOff is the latest OutputPower request: an output that appears
-	// meanwhile (a display reconnecting from deep sleep) is turned off too.
+	// screensOff is the latest requested power state (OutputPower command
+	// or input wake): an output that appears while it is set (a display
+	// reconnecting from deep sleep) is turned off too.
 	screensOff bool
 }
 
@@ -301,7 +302,9 @@ func (c *Client) handle(ctx context.Context, out chan<- ports.WaylandEvent, n no
 		}
 		// The first mode is the initial state of a new power control. An
 		// output that appears while the screens are off is turned off and
-		// claimed, even if it is already off, so that activity turns it on.
+		// claimed, even if it is already off (a compositor may keep a
+		// reconnected output off), so that activity turns it on. This is
+		// the one exception to never claiming an output already off.
 		if first && c.screensOff {
 			if n.mode == outputpower.MODE_ON {
 				if err := o.power.SetMode(outputpower.MODE_OFF); err != nil {
