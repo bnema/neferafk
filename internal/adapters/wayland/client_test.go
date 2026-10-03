@@ -109,59 +109,83 @@ func nextEvent(t *testing.T, out <-chan ports.WaylandEvent) ports.WaylandEvent {
 	}
 }
 
-func TestDiscoveryIdleReloadPowerAndRemoval(t *testing.T) {
+// started is a client running against a fake compositor that announced
+// its globals and answered the initial bindings (one output, HEADLESS-1).
+type started struct {
+	peer                  *net.UnixConn
+	registry, wake, power uint32
+	ids                   map[string]uint32 // bound ID by interface
+	notifications         map[uint32]uint32 // idle notification by timeout (ms)
+	commands              chan ports.WaylandCommand
+	out                   chan ports.WaylandEvent
+	done                  chan error
+}
+
+// extraGlobal is one more global announced at start.
+type extraGlobal struct {
+	name    uint32
+	iface   string
+	version uint32
+}
+
+// start runs a client and the initial discovery; extra globals follow
+// wl_seat, wl_output, ext_idle_notifier_v1 and zwlr_output_power_manager_v1.
+func start(t *testing.T, ctx context.Context, options Options, extra ...extraGlobal) *started {
+	t.Helper()
 	conn, peer := sockets(t)
-	c, err := New(conn, Options{Requirements: ports.WaylandRequirements{Idle: true, InputWake: true, OutputPower: true, Lock: true, Visual: true}, Generation: 1, Deadlines: []time.Duration{time.Second, time.Second, 2 * time.Second}}, zerowrap.New(zerowrap.Config{Output: io.Discard}))
+	c, err := New(conn, options, zerowrap.New(zerowrap.Config{Output: io.Discard}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, _, body := readWire(t, peer)
-	registry := binary.NativeEndian.Uint32(body)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	commands := make(chan ports.WaylandCommand, 8)
-	out := make(chan ports.WaylandEvent, 64)
-	done := make(chan error, 1)
-	go func() { done <- c.Run(ctx, commands, out) }()
+	s := &started{peer: peer, registry: binary.NativeEndian.Uint32(body), ids: map[string]uint32{}, notifications: map[uint32]uint32{}, commands: make(chan ports.WaylandCommand, 8), out: make(chan ports.WaylandEvent, 64), done: make(chan error, 1)}
+	go func() { s.done <- c.Run(ctx, s.commands, s.out) }()
 	_, _, body = readWire(t, peer)
-	global(t, peer, registry, 10, "wl_seat", 5)
-	global(t, peer, registry, 11, "wl_output", 4)
-	global(t, peer, registry, 12, "ext_idle_notifier_v1", 2)
-	global(t, peer, registry, 13, "zwlr_output_power_manager_v1", 1)
-	global(t, peer, registry, 14, "ext_session_lock_manager_v1", 1)
+	global(t, peer, s.registry, 10, "wl_seat", 5)
+	global(t, peer, s.registry, 11, "wl_output", 4)
+	global(t, peer, s.registry, 12, "ext_idle_notifier_v1", 2)
+	global(t, peer, s.registry, 13, "zwlr_output_power_manager_v1", 1)
+	for _, g := range extra {
+		global(t, peer, s.registry, g.name, g.iface, g.version)
+	}
 	synchronize(t, peer, body)
-	ids := map[string]uint32{}
-	notifications := map[uint32]uint32{}
-	var wake, power uint32
 	for {
 		id, op, b := readWire(t, peer)
 		if id == 1 {
 			synchronize(t, peer, b)
 			break
 		}
-		if id == registry {
+		if id == s.registry {
 			n := int(binary.NativeEndian.Uint32(b[4:]))
 			iface := string(b[8 : 8+n-1])
-			ids[iface] = binary.NativeEndian.Uint32(b[len(b)-4:])
+			s.ids[iface] = binary.NativeEndian.Uint32(b[len(b)-4:])
 			if iface == "wl_output" {
-				sendWire(t, peer, ids[iface], 4, wireString("HEADLESS-1"))
+				sendWire(t, peer, s.ids[iface], 4, wireString("HEADLESS-1"))
 			}
 			continue
 		}
-		if id == ids["ext_idle_notifier_v1"] {
+		if id == s.ids["ext_idle_notifier_v1"] {
 			child := binary.NativeEndian.Uint32(b)
-			ms := binary.NativeEndian.Uint32(b[4:])
 			if op == 2 {
-				wake = child
+				s.wake = child
 			} else {
-				notifications[ms] = child
+				s.notifications[binary.NativeEndian.Uint32(b[4:])] = child
 			}
 		}
-		if id == ids["zwlr_output_power_manager_v1"] {
-			power = binary.NativeEndian.Uint32(b)
-			sendWire(t, peer, power, 0, words(1))
+		if id == s.ids["zwlr_output_power_manager_v1"] {
+			s.power = binary.NativeEndian.Uint32(b)
+			sendWire(t, peer, s.power, 0, words(1))
 		}
 	}
+	return s
+}
+
+func TestDiscoveryIdleReloadPowerAndRemoval(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s := start(t, ctx, Options{Requirements: ports.WaylandRequirements{Idle: true, InputWake: true, OutputPower: true, Lock: true, Visual: true}, Generation: 1, Deadlines: []time.Duration{time.Second, time.Second, 2 * time.Second}}, extraGlobal{14, "ext_session_lock_manager_v1", 1})
+	peer, registry, ids, notifications, wake, power := s.peer, s.registry, s.ids, s.notifications, s.wake, s.power
+	commands, out, done := s.commands, s.out, s.done
 	caps := capability(t, out)
 	if len(notifications) != 2 || wake == 0 || power == 0 || len(caps.Outputs) != 1 || caps.Outputs[0].Name != "HEADLESS-1" || !caps.Outputs[0].PowerSupported {
 		t.Fatalf("initial: notifications=%v wake=%d power=%d caps=%+v", notifications, wake, power, caps)
@@ -260,6 +284,60 @@ func TestDiscoveryIdleReloadPowerAndRemoval(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("Run failed to join reader")
+	}
+}
+
+func TestOutputAddedWhileOffIsTurnedOffAndWakesWithTheOthers(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s := start(t, ctx, Options{Requirements: ports.WaylandRequirements{Idle: true, InputWake: true, OutputPower: true}, Generation: 1, Deadlines: []time.Duration{time.Second}})
+	peer, registry, wake, power := s.peer, s.registry, s.wake, s.power
+	commands, out, done := s.commands, s.out, s.done
+	manager := s.ids["zwlr_output_power_manager_v1"]
+	capability(t, out)
+	if manager == 0 || wake == 0 || power == 0 {
+		t.Fatal(manager, wake, power)
+	}
+	commands <- ports.OutputPower{On: false}
+	if id, op, b := readWire(t, peer); id != power || op != 0 || binary.NativeEndian.Uint32(b) != 0 {
+		t.Fatalf("off %d/%d %x", id, op, b)
+	}
+	// addOutput announces an output and answers its power control's initial
+	// mode; it returns that control.
+	addOutput := func(name, mode uint32) uint32 {
+		global(t, peer, registry, name, "wl_output", 4)
+		var p uint32
+		for i := 0; i < 2; i++ {
+			if id, _, b := readWire(t, peer); id == manager {
+				p = binary.NativeEndian.Uint32(b)
+			}
+		}
+		sendWire(t, peer, p, 0, words(mode))
+		return p
+	}
+	// A display reconnecting from deep sleep comes back on: turned off.
+	on := addOutput(14, 1)
+	if id, op, b := readWire(t, peer); id != on || op != 0 || binary.NativeEndian.Uint32(b) != 0 {
+		t.Fatalf("new output off %d/%d %x", id, op, b)
+	}
+	// One that comes back off needs no request, but is woken with the rest.
+	off := addOutput(15, 0)
+	sendWire(t, peer, wake, 0, nil)
+	sendWire(t, peer, wake, 1, nil)
+	woken := map[uint32]bool{}
+	for range 3 {
+		id, op, b := readWire(t, peer)
+		if op != 0 || binary.NativeEndian.Uint32(b) != 1 {
+			t.Fatalf("wake %d/%d %x", id, op, b)
+		}
+		woken[id] = true
+	}
+	if !woken[power] || !woken[on] || !woken[off] {
+		t.Fatal(woken)
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
 	}
 }
 
