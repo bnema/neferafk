@@ -79,7 +79,7 @@ auth.mode = password
 | `auth.pin-env` | environment variable name (with `env`) | none |
 | `auth.pin-entry` | `pass` entry (with `pass`) | none |
 
-Durations use Go syntax (`30s`, `5m`, `1h`), up to 24h. The order of the actions comes from their delays: for example, `lock.after = 20s` with `screens.off-after = 50s` turns the screens off 30 seconds after the lock.
+Durations use Go syntax (`30s`, `5m`, `1h`), up to 24h. The order of the actions comes from their delays: for example, `lock.after = 20s` with `screens.off-after = 50s` turns the screens off 30 seconds after the lock. A screen that connects while the screens are off, such as a display that reconnects from deep sleep, is turned off too.
 
 The lock prompt shows on every output. Set `lock.output` to show it only on that output while it is connected; the other outputs then show black. A change applies from the next lock. `wlr-randr` lists the output names.
 

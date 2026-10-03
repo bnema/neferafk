@@ -72,6 +72,9 @@ type Client struct {
 	deadlines        map[time.Duration]bool
 	generation, next uint64
 	dirty            bool
+	// screensOff is the latest OutputPower request: an output that appears
+	// meanwhile (a display reconnecting from deep sleep) is turned off too.
+	screensOff bool
 }
 
 // New takes ownership of conn. Run is called exactly once; no other reader or
@@ -291,9 +294,21 @@ func (c *Client) handle(ctx context.Context, out chan<- ports.WaylandEvent, n no
 		if c.outputs[o.global] != o || o.failed {
 			return nil
 		}
+		first := !o.modeKnown
 		o.mode, o.modeKnown = n.mode, true
 		if n.mode == outputpower.MODE_ON {
 			o.off = false
+		}
+		// The first mode is the initial state of a new power control. An
+		// output that appears while the screens are off is turned off and
+		// claimed, even if it is already off, so that activity turns it on.
+		if first && c.screensOff {
+			if n.mode == outputpower.MODE_ON {
+				if err := o.power.SetMode(outputpower.MODE_OFF); err != nil {
+					return err
+				}
+			}
+			o.off = true
 		}
 	case 5:
 		o := n.output
@@ -379,6 +394,7 @@ func (c *Client) reconcile() error {
 			}
 			o.off = false
 			o.failed = false
+			o.modeKnown = false // a new control reports its initial mode
 		}
 		if c.power != nil {
 			if err := c.power.Destroy(); err != nil {
@@ -514,6 +530,7 @@ func (c *Client) destroyNotification(p *notification) error {
 	return p.proxy.Destroy()
 }
 func (c *Client) setPower(on bool) error {
+	c.screensOff = !on
 	for _, o := range c.outputs {
 		if o.power == nil || o.failed {
 			continue

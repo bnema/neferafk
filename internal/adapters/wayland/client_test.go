@@ -263,6 +263,95 @@ func TestDiscoveryIdleReloadPowerAndRemoval(t *testing.T) {
 	}
 }
 
+func TestOutputAddedWhileOffIsTurnedOffAndWakesWithTheOthers(t *testing.T) {
+	conn, peer := sockets(t)
+	c, err := New(conn, Options{Requirements: ports.WaylandRequirements{Idle: true, InputWake: true, OutputPower: true}, Generation: 1, Deadlines: []time.Duration{time.Second}}, zerowrap.New(zerowrap.Config{Output: io.Discard}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, body := readWire(t, peer)
+	registry := binary.NativeEndian.Uint32(body)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	commands := make(chan ports.WaylandCommand, 8)
+	out := make(chan ports.WaylandEvent, 64)
+	done := make(chan error, 1)
+	go func() { done <- c.Run(ctx, commands, out) }()
+	_, _, body = readWire(t, peer)
+	global(t, peer, registry, 10, "wl_seat", 5)
+	global(t, peer, registry, 11, "wl_output", 4)
+	global(t, peer, registry, 12, "ext_idle_notifier_v1", 2)
+	global(t, peer, registry, 13, "zwlr_output_power_manager_v1", 1)
+	synchronize(t, peer, body)
+	ids := map[string]uint32{}
+	var wake, power uint32
+	for {
+		id, op, b := readWire(t, peer)
+		if id == 1 {
+			synchronize(t, peer, b)
+			break
+		}
+		switch id {
+		case registry:
+			n := int(binary.NativeEndian.Uint32(b[4:]))
+			ids[string(b[8:8+n-1])] = binary.NativeEndian.Uint32(b[len(b)-4:])
+		case ids["ext_idle_notifier_v1"]:
+			if op == 2 {
+				wake = binary.NativeEndian.Uint32(b)
+			}
+		case ids["zwlr_output_power_manager_v1"]:
+			power = binary.NativeEndian.Uint32(b)
+			sendWire(t, peer, power, 0, words(1))
+		}
+	}
+	manager := ids["zwlr_output_power_manager_v1"]
+	capability(t, out)
+	if manager == 0 || wake == 0 || power == 0 {
+		t.Fatal(manager, wake, power)
+	}
+	commands <- ports.OutputPower{On: false}
+	if id, op, b := readWire(t, peer); id != power || op != 0 || binary.NativeEndian.Uint32(b) != 0 {
+		t.Fatalf("off %d/%d %x", id, op, b)
+	}
+	// addOutput announces an output and answers its power control's initial
+	// mode; it returns that control.
+	addOutput := func(name, mode uint32) uint32 {
+		global(t, peer, registry, name, "wl_output", 4)
+		var p uint32
+		for i := 0; i < 2; i++ {
+			if id, _, b := readWire(t, peer); id == manager {
+				p = binary.NativeEndian.Uint32(b)
+			}
+		}
+		sendWire(t, peer, p, 0, words(mode))
+		return p
+	}
+	// A display reconnecting from deep sleep comes back on: turned off.
+	on := addOutput(14, 1)
+	if id, op, b := readWire(t, peer); id != on || op != 0 || binary.NativeEndian.Uint32(b) != 0 {
+		t.Fatalf("new output off %d/%d %x", id, op, b)
+	}
+	// One that comes back off needs no request, but is woken with the rest.
+	off := addOutput(15, 0)
+	sendWire(t, peer, wake, 0, nil)
+	sendWire(t, peer, wake, 1, nil)
+	woken := map[uint32]bool{}
+	for range 3 {
+		id, op, b := readWire(t, peer)
+		if op != 0 || binary.NativeEndian.Uint32(b) != 1 {
+			t.Fatalf("wake %d/%d %x", id, op, b)
+		}
+		woken[id] = true
+	}
+	if !woken[power] || !woken[on] || !woken[off] {
+		t.Fatal(woken)
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestMissingAndDisabledCapabilities(t *testing.T) {
 	conn, peer := sockets(t)
 	c, err := New(conn, Options{Requirements: ports.WaylandRequirements{Lock: true, Visual: true}}, zerowrap.New(zerowrap.Config{Output: io.Discard}))
