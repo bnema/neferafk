@@ -11,14 +11,21 @@ import (
 const MaxDuration = 24 * time.Hour
 
 // Zero After disables only that action. No deadline implies another action.
+//
+// The kv tags describe the config file keys (decoded by adapters/config). A
+// zero duration is written "off", except fade.duration where 0s is a value.
+// max:"24h" mirrors MaxDuration (kept for the line number; Validate also checks).
 type Config struct {
-	LockAfter, FadeAfter, OffAfter, SleepAfter time.Duration
-	FadeDuration                               time.Duration
-	Auth                                       AuthConfig
+	LockAfter    time.Duration `kv:"lock.after,off" min:"1ns" max:"24h"`
+	FadeAfter    time.Duration `kv:"fade.after,off" min:"1ns" max:"24h"`
+	OffAfter     time.Duration `kv:"screens.off-after,off" min:"1ns" max:"24h"`
+	SleepAfter   time.Duration `kv:"sleep.after,off" min:"1ns" max:"24h"`
+	FadeDuration time.Duration `kv:"fade.duration" min:"0s" max:"24h"`
+	Auth         AuthConfig    `kv:"auth"`
 	// LockOutput names the only output (wl_output name, e.g. DP-2) that
 	// shows the lock prompt while it is connected. Empty, or absent: every
 	// output shows it. A change applies from the next lock.
-	LockOutput string
+	LockOutput string `kv:"lock.output,nonempty"`
 }
 
 // MaxOutputName bounds LockOutput: neferclient truncates longer wl_output
@@ -43,9 +50,10 @@ const (
 // PIN mode always falls back to PAM when its selected source is unavailable or
 // invalid. A wrong PIN is authentication failure, never a fallback trigger.
 type AuthConfig struct {
-	Mode             AuthMode
-	PINSource        PINSource
-	PINEnv, PINEntry string
+	Mode      AuthMode  `kv:"mode" oneof:"password|pin"`
+	PINSource PINSource `kv:"pin-source" oneof:"env|pass"`
+	PINEnv    string    `kv:"pin-env,nonempty"`
+	PINEntry  string    `kv:"pin-entry,nonempty"`
 }
 
 func Defaults() Config {
