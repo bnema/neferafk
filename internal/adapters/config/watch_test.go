@@ -2,6 +2,8 @@ package config
 
 import (
 	"context"
+	"errors"
+	"github.com/bnema/kvconf"
 	"github.com/bnema/neferafk/internal/ports"
 	"os"
 	"path/filepath"
@@ -195,5 +197,73 @@ func TestWatchFirstCandidateClosesLoadStartupGapAndMissingCancellation(t *testin
 	cancel()
 	if err := recv(t, done); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A watch the OS refuses must fall back to polling, never stop the daemon.
+func TestWatchFallsBackToPolling(t *testing.T) {
+	orig, origPoll := kvWatch, fallbackPoll
+	t.Cleanup(func() { kvWatch, fallbackPoll = orig, origPoll })
+	fallbackPoll = 20 * time.Millisecond
+	for _, tc := range []struct {
+		name  string
+		setup func(t *testing.T, dir string)
+	}{
+		{"native watch fails at startup", func(t *testing.T, _ string) {
+			kvWatch = func(ctx context.Context, path string, opts kvconf.WatchOptions, out chan<- struct{}) error {
+				if opts.Poll == 0 {
+					return errors.New("no space left on device")
+				}
+				return orig(ctx, path, opts, out)
+			}
+		}},
+		{"native watch fails after install", func(t *testing.T, _ string) {
+			kvWatch = func(ctx context.Context, path string, opts kvconf.WatchOptions, out chan<- struct{}) error {
+				if opts.Poll == 0 {
+					close(opts.Ready)
+					return errors.New("no space left on device")
+				}
+				return orig(ctx, path, opts, out)
+			}
+		}},
+		{"directory not readable", func(t *testing.T, dir string) {
+			if os.Geteuid() == 0 {
+				t.Skip("root ignores directory permissions")
+			}
+			kvWatch = orig
+			if err := os.Chmod(dir, 0300); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { os.Chmod(dir, 0700) })
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "config")
+			save(t, path, "lock.after=1m\n")
+			tc.setup(t, dir)
+			out := make(chan ports.ConfigChanged, 4)
+			errs := make(chan error, 4)
+			ready := make(chan struct{})
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			done := make(chan error, 1)
+			go func() { done <- Watch(ctx, path, out, errs, ready) }()
+			recv(t, ready)
+			if err := recv(t, errs); err.Error() != "config watch failed; polling" {
+				t.Fatal(err)
+			}
+			if got := recv(t, out); got.Config.LockAfter != time.Minute {
+				t.Fatal(got)
+			}
+			save(t, path, "lock.after=2m\n")
+			if got := recv(t, out); got.Config.LockAfter != 2*time.Minute {
+				t.Fatal(got)
+			}
+			cancel()
+			if err := recv(t, done); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
