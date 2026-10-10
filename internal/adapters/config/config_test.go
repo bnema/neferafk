@@ -72,3 +72,65 @@ func TestRejectInvalidUTF8BeforeParsingAndDirectMetadata(t *testing.T) {
 		t.Fatal("direct invalid UTF-8 metadata admitted")
 	}
 }
+
+func TestParseReportsFirstProblemInLineOrder(t *testing.T) {
+	long := strings.Repeat("#", MaxLine+1)
+	for _, tc := range []struct{ name, text, want string }{
+		{"bad value before missing =", "lock.after=bad\nfoo", "line 1: "},
+		{"bad value before duplicate", "lock.after=bad\nlock.after=1s", "line 1: "},
+		{"unknown key before missing =", "unknown=x\nnoeq", "line 1: unknown key"},
+		{"bad value before long line", "lock.after=bad\n" + long, "line 1: "},
+		{"missing = before bad value", "noeq\nlock.after=bad", "line 1: expected key = value"},
+		{"duplicate before later bad value", "lock.after=1s\nlock.after=2s\nsleep.after=bad", "line 2: overrides line 1"},
+		{"duplicate wins tie with its bad value", "lock.after=1s\nlock.after=bad", "line 2: overrides line 1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, err := Parse(strings.NewReader(tc.text))
+			if err == nil || !strings.HasPrefix(err.Error(), tc.want) || c != (ports.Config{}) {
+				t.Fatalf("got %v, %+v; want error starting %q", err, c, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseHashStartsCommentEvenInQuotes(t *testing.T) {
+	for _, tc := range []struct{ name, text, want string }{
+		{"plain", "lock.output = DP-2 # left", "DP-2"},
+		{"no space", "lock.output = DP-2#left", "DP-2"},
+		{"inside double quotes", `lock.output = "DP#2"`, `"DP`},
+		{"after unbalanced quote", `lock.output = DP-2 "# note`, `DP-2 "`},
+		{"inside single quotes", "lock.output = 'DP#2'", "'DP"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, err := Parse(strings.NewReader(tc.text))
+			if err != nil || c.LockOutput != tc.want {
+				t.Fatalf("got %q, %v; want %q", c.LockOutput, err, tc.want)
+			}
+		})
+	}
+	if _, err := Parse(strings.NewReader("lock.output = # only a comment")); err == nil {
+		t.Fatal("value made empty by a comment accepted")
+	}
+}
+
+// The kv tags on ports.Config repeat MaxDuration and the auth constants.
+func TestTagsMatchPortsConstants(t *testing.T) {
+	max := ports.MaxDuration.String()
+	for _, key := range []string{"lock.after", "fade.after", "screens.off-after", "sleep.after", "fade.duration"} {
+		if _, err := Parse(strings.NewReader(key + "=" + max)); err != nil {
+			t.Errorf("%s=%s rejected: %v", key, max, err)
+		}
+		if _, err := Parse(strings.NewReader(key + "=" + (ports.MaxDuration + 1).String())); err == nil {
+			t.Errorf("%s above %s accepted", key, max)
+		}
+	}
+	for _, text := range []string{
+		"auth.mode=" + string(ports.AuthModePassword),
+		"auth.mode=" + string(ports.AuthModePIN) + "\nauth.pin-source=" + string(ports.PINSourceEnv) + "\nauth.pin-env=PIN",
+		"auth.pin-source=" + string(ports.PINSourcePass) + "\nauth.pin-entry=a/b",
+	} {
+		if _, err := Parse(strings.NewReader(text)); err != nil {
+			t.Errorf("%q rejected: %v", text, err)
+		}
+	}
+}

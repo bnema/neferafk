@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/bnema/kvconf"
 	"github.com/bnema/neferafk/internal/ports"
@@ -45,31 +46,50 @@ func Parse(r io.Reader) (ports.Config, error) {
 	return parse(data)
 }
 
-// options: any problem rejects the whole file; "#" starts a comment anywhere
-// and values are never unquoted.
-var options = kvconf.Options{Strict: true, Comments: kvconf.CommentAny, RawValues: true, MaxBytes: MaxBytes, MaxLine: MaxLine}
+// options: values are never unquoted, and parse cuts each one at its first
+// "#", even inside quotes. parse rejects the whole file on any problem.
+var options = kvconf.Options{Comments: kvconf.CommentLine, RawValues: true, MaxBytes: MaxBytes, MaxLine: MaxLine}
 
 var errTooLarge = errors.New("config exceeds 64KiB")
 
+// parse fails on the first problem in line order. Strict mode would report
+// a line without "=" or a duplicate before an earlier bad value, so the file
+// is decoded leniently and its problems compared; a syntax problem wins a tie.
 func parse(data []byte) (ports.Config, error) {
-	cfg := ports.Defaults()
-	if _, err := kvconf.Unmarshal(data, &cfg, options); err != nil {
+	entries, syntax, err := kvconf.ParseBytes(data, options)
+	if err != nil {
 		return ports.Config{}, reject(err)
+	}
+	for i := range entries {
+		if v, _, cut := strings.Cut(entries[i].Value, "#"); cut {
+			entries[i].Value = strings.TrimSpace(v)
+		}
+	}
+	cfg := ports.Defaults()
+	values, err := kvconf.Decode(entries, &cfg, options)
+	switch {
+	case len(syntax) > 0 && (len(values) == 0 || syntax[0].Line <= values[0].Line):
+		return ports.Config{}, lineError(syntax[0])
+	case len(values) > 0:
+		return ports.Config{}, lineError(values[0])
+	case err != nil:
+		return ports.Config{}, err
 	}
 	return cfg, nil
 }
 
-// reject rewrites kvconf errors so they carry a line number and a fixed
-// message, never a key or value, which may be secret.
 func reject(err error) error {
-	var w kvconf.Warning
 	switch {
 	case errors.Is(err, kvconf.ErrTooLarge):
 		return errTooLarge
 	case errors.Is(err, kvconf.ErrNotUTF8):
 		return errors.New("config is not valid UTF-8")
-	case errors.As(err, &w):
-		return fmt.Errorf("line %d: %s", w.Line, w.Msg)
 	}
 	return err
+}
+
+// lineError carries a line number and a fixed message, never the key or
+// value, which may be secret.
+func lineError(w kvconf.Warning) error {
+	return fmt.Errorf("line %d: %s", w.Line, w.Msg)
 }
