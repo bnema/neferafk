@@ -31,7 +31,7 @@ paru -S neferafk-bin   # latest release, pre-built
 paru -S neferafk-git   # latest main, built from source
 ```
 
-Pre-built archives are on the [releases page](https://github.com/bnema/neferafk/releases). To build from a checkout:
+Pre-built archives are on the [releases page](https://git.bnema.dev/neferafk/releases). To build from a checkout:
 
 ```sh
 CGO_ENABLED=0 go build -o bin/neferafk ./cmd/neferafk   # builds bin/neferafk
