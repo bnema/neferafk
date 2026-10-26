@@ -21,7 +21,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/bnema/neferafk/internal/ports"
+	"bnema.dev/neferafk/internal/ports"
 )
 
 var ErrProtocol = errors.New("visualproc: invalid frame")

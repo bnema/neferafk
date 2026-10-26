@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/bnema/neferafk/internal/ports"
+	"bnema.dev/neferafk/internal/ports"
 )
 
 // Requirements derives what the daemon needs from its startup config. Idle

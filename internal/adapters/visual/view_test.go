@@ -5,7 +5,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/bnema/neferclient"
+	"bnema.dev/neferclient"
 	"github.com/stretchr/testify/require"
 )
 

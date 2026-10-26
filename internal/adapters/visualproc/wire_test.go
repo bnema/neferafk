@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bnema/neferafk/internal/ports"
+	"bnema.dev/neferafk/internal/ports"
 )
 
 func TestCommandRoundTrip(t *testing.T) {

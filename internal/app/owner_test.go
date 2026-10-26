@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	portsmocks "github.com/bnema/neferafk/internal/mocks/ports"
-	"github.com/bnema/neferafk/internal/ports"
-	"github.com/bnema/zerowrap"
+	portsmocks "bnema.dev/neferafk/internal/mocks/ports"
+	"bnema.dev/neferafk/internal/ports"
+	"bnema.dev/zerowrap"
 	"github.com/stretchr/testify/mock"
 )
 

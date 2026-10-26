@@ -6,9 +6,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/bnema/neferafk/internal/adapters/auth"
-	"github.com/bnema/neferafk/internal/ports"
-	"github.com/bnema/zerowrap"
+	"bnema.dev/neferafk/internal/adapters/auth"
+	"bnema.dev/neferafk/internal/ports"
+	"bnema.dev/zerowrap"
 )
 
 // workerTimeout is the watchdog for worker startup and for one attempt. PAM

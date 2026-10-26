@@ -11,12 +11,12 @@ import (
 	"sort"
 	"time"
 
-	idlenotify "github.com/bnema/go-wayland-bindings/client/extidlenotify"
-	core "github.com/bnema/go-wayland-bindings/client/wayland"
-	outputpower "github.com/bnema/go-wayland-bindings/client/wlroutputpowermanagement"
-	"github.com/bnema/neferafk/internal/ports"
-	"github.com/bnema/wlturbo"
-	"github.com/bnema/zerowrap"
+	idlenotify "bnema.dev/go-wayland-bindings/client/extidlenotify"
+	core "bnema.dev/go-wayland-bindings/client/wayland"
+	outputpower "bnema.dev/go-wayland-bindings/client/wlroutputpowermanagement"
+	"bnema.dev/neferafk/internal/ports"
+	"bnema.dev/wlturbo"
+	"bnema.dev/zerowrap"
 )
 
 const queueSize = 64

@@ -7,9 +7,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/bnema/neferclient"
-	"github.com/bnema/nefergui"
-	"github.com/bnema/zerowrap"
+	"bnema.dev/neferclient"
+	"bnema.dev/nefergui"
+	"bnema.dev/zerowrap"
 )
 
 // fadeTick is the redraw cadence while the fade animates.

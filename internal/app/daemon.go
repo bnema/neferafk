@@ -9,13 +9,13 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/bnema/neferafk/internal/adapters/config"
-	"github.com/bnema/neferafk/internal/adapters/control"
-	"github.com/bnema/neferafk/internal/adapters/logind"
-	"github.com/bnema/neferafk/internal/adapters/visualproc"
-	"github.com/bnema/neferafk/internal/adapters/wayland"
-	"github.com/bnema/neferafk/internal/ports"
-	"github.com/bnema/zerowrap"
+	"bnema.dev/neferafk/internal/adapters/config"
+	"bnema.dev/neferafk/internal/adapters/control"
+	"bnema.dev/neferafk/internal/adapters/logind"
+	"bnema.dev/neferafk/internal/adapters/visualproc"
+	"bnema.dev/neferafk/internal/adapters/wayland"
+	"bnema.dev/neferafk/internal/ports"
+	"bnema.dev/zerowrap"
 )
 
 // DaemonOptions configures RunDaemon.

@@ -7,7 +7,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/bnema/neferafk/internal/ports"
+	"bnema.dev/neferafk/internal/ports"
 )
 
 func TestCodecBoundsAndTruncation(t *testing.T) {

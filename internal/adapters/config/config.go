@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/bnema/kvconf"
-	"github.com/bnema/neferafk/internal/ports"
+	"bnema.dev/kvconf"
+	"bnema.dev/neferafk/internal/ports"
 )
 
 const MaxBytes = 64 << 10

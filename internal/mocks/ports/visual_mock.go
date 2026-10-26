@@ -7,7 +7,7 @@ package portsmocks
 import (
 	"context"
 
-	"github.com/bnema/neferafk/internal/ports"
+	"bnema.dev/neferafk/internal/ports"
 	mock "github.com/stretchr/testify/mock"
 )
 

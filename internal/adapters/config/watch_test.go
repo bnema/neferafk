@@ -3,8 +3,8 @@ package config
 import (
 	"context"
 	"errors"
-	"github.com/bnema/kvconf"
-	"github.com/bnema/neferafk/internal/ports"
+	"bnema.dev/kvconf"
+	"bnema.dev/neferafk/internal/ports"
 	"os"
 	"path/filepath"
 	"testing"

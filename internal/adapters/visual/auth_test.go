@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bnema/neferafk/internal/adapters/auth"
-	"github.com/bnema/neferafk/internal/ports"
-	"github.com/bnema/zerowrap"
+	"bnema.dev/neferafk/internal/adapters/auth"
+	"bnema.dev/neferafk/internal/ports"
+	"bnema.dev/zerowrap"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )

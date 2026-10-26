@@ -7,7 +7,7 @@ package auth
 import (
 	"time"
 
-	"github.com/bnema/purego-pam"
+	"bnema.dev/purego-pam"
 	mock "github.com/stretchr/testify/mock"
 )
 

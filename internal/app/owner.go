@@ -12,9 +12,9 @@ import (
 	"slices"
 	"time"
 
-	"github.com/bnema/neferafk/internal/core"
-	"github.com/bnema/neferafk/internal/ports"
-	"github.com/bnema/zerowrap"
+	"bnema.dev/neferafk/internal/core"
+	"bnema.dev/neferafk/internal/ports"
+	"bnema.dev/zerowrap"
 )
 
 const maxQueue = 256

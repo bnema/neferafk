@@ -2,7 +2,7 @@ package core
 
 import (
 	"fmt"
-	"github.com/bnema/neferafk/internal/ports"
+	"bnema.dev/neferafk/internal/ports"
 	"slices"
 	"testing"
 	"time"

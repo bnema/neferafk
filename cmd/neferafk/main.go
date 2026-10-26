@@ -12,12 +12,12 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/bnema/neferafk/internal/adapters/auth"
-	"github.com/bnema/neferafk/internal/adapters/config"
-	"github.com/bnema/neferafk/internal/adapters/control"
-	"github.com/bnema/neferafk/internal/adapters/visual"
-	"github.com/bnema/neferafk/internal/app"
-	"github.com/bnema/zerowrap"
+	"bnema.dev/neferafk/internal/adapters/auth"
+	"bnema.dev/neferafk/internal/adapters/config"
+	"bnema.dev/neferafk/internal/adapters/control"
+	"bnema.dev/neferafk/internal/adapters/visual"
+	"bnema.dev/neferafk/internal/app"
+	"bnema.dev/zerowrap"
 )
 
 const (

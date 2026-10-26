@@ -5,7 +5,7 @@ import (
 	"errors"
 	"io"
 
-	"github.com/bnema/neferafk/internal/ports"
+	"bnema.dev/neferafk/internal/ports"
 )
 
 var ErrProtocol = errors.New("invalid authentication frame")

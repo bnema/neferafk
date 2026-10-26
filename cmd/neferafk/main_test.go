@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/bnema/neferafk/internal/adapters/auth"
-	"github.com/bnema/neferafk/internal/ports"
+	"bnema.dev/neferafk/internal/adapters/auth"
+	"bnema.dev/neferafk/internal/ports"
 )
 
 func run(t *testing.T, args ...string) (int, string, string) {

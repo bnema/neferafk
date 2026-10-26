@@ -7,10 +7,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/bnema/neferafk/internal/adapters/visualproc"
-	"github.com/bnema/neferafk/internal/ports"
-	"github.com/bnema/nefergui"
-	"github.com/bnema/zerowrap"
+	"bnema.dev/neferafk/internal/adapters/visualproc"
+	"bnema.dev/neferafk/internal/ports"
+	"bnema.dev/nefergui"
+	"bnema.dev/zerowrap"
 )
 
 var errLockWithoutAuth = errors.New("session lock ended without authentication success")

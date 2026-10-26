@@ -3,7 +3,7 @@ package visual
 import (
 	"testing"
 
-	"github.com/bnema/neferclient"
+	"bnema.dev/neferclient"
 	"github.com/stretchr/testify/require"
 )
 

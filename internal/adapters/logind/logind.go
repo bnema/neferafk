@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bnema/neferafk/internal/ports"
-	"github.com/bnema/zerowrap"
+	"bnema.dev/neferafk/internal/ports"
+	"bnema.dev/zerowrap"
 	"github.com/godbus/dbus/v5"
 	"golang.org/x/sys/unix"
 )

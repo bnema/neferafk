@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bnema/nefergui"
+	"bnema.dev/nefergui"
 )
 
 // Lock look: black screen, one monospace box with a grey border. The masked

@@ -1,7 +1,7 @@
 package config
 
 import (
-	"github.com/bnema/neferafk/internal/ports"
+	"bnema.dev/neferafk/internal/ports"
 	"strings"
 	"testing"
 	"time"

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bnema/neferafk/internal/adapters/visualproc"
-	"github.com/bnema/neferafk/internal/ports"
+	"bnema.dev/neferafk/internal/adapters/visualproc"
+	"bnema.dev/neferafk/internal/ports"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )

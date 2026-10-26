@@ -9,9 +9,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/bnema/neferafk/internal/ports"
-	"github.com/bnema/neferclient"
-	"github.com/bnema/nefergui"
+	"bnema.dev/neferafk/internal/ports"
+	"bnema.dev/neferclient"
+	"bnema.dev/nefergui"
 )
 
 // errLockFinished reports that the compositor refused the session lock or

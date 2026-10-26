@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/bnema/neferafk/internal/ports"
+	"bnema.dev/neferafk/internal/ports"
 )
 
 const sourceLimit = 4096

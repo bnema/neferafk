@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bnema/neferclient"
-	"github.com/bnema/nefergui"
+	"bnema.dev/neferclient"
+	"bnema.dev/nefergui"
 )
 
 // screen is one Wayland surface and the NeferGUI renderer that draws it. It

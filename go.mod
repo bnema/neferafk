@@ -1,24 +1,24 @@
-module github.com/bnema/neferafk
+module bnema.dev/neferafk
 
 go 1.27
 
 require (
-	github.com/bnema/go-wayland-bindings v0.1.0
-	github.com/bnema/kvconf v0.1.2
-	github.com/bnema/neferclient v0.4.0
-	github.com/bnema/nefergui v0.7.3
-	github.com/bnema/purego-pam v0.1.0
-	github.com/bnema/wlturbo v0.6.2
-	github.com/bnema/zerowrap v1.4.1
+	bnema.dev/go-wayland-bindings v0.2.0
+	bnema.dev/kvconf v0.2.0
+	bnema.dev/neferclient v0.5.1
+	bnema.dev/nefergui v0.8.0
+	bnema.dev/purego-pam v0.2.0
+	bnema.dev/wlturbo v0.7.0
+	bnema.dev/zerowrap v1.5.0
 	github.com/godbus/dbus/v5 v5.2.4
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/sys v0.49.0
 )
 
 require (
-	github.com/bnema/purego v0.13.0-bnema.2 // indirect
-	github.com/bnema/purego-vulkan v0.6.0 // indirect
-	github.com/bnema/purego-xkbcommon v0.2.0 // indirect
+	bnema.dev/purego v0.13.0-bnema.3 // indirect
+	bnema.dev/purego-vulkan v0.7.0 // indirect
+	bnema.dev/purego-xkbcommon v0.3.0 // indirect
 	github.com/go-text/typesetting v0.3.5 // indirect
 	github.com/mattn/go-colorable v0.1.16 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect

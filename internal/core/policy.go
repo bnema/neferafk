@@ -7,7 +7,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/bnema/neferafk/internal/ports"
+	"bnema.dev/neferafk/internal/ports"
 )
 
 type deadline struct {

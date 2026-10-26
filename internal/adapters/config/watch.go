@@ -6,8 +6,8 @@ import (
 	"io/fs"
 	"time"
 
-	"github.com/bnema/kvconf"
-	"github.com/bnema/neferafk/internal/ports"
+	"bnema.dev/kvconf"
+	"bnema.dev/neferafk/internal/ports"
 )
 
 // fallbackPoll is the polling interval used when native watching fails.

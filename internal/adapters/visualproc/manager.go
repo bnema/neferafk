@@ -5,8 +5,8 @@ import (
 	"errors"
 	"sync/atomic"
 
-	"github.com/bnema/neferafk/internal/ports"
-	"github.com/bnema/zerowrap"
+	"bnema.dev/neferafk/internal/ports"
+	"bnema.dev/zerowrap"
 )
 
 type live struct {

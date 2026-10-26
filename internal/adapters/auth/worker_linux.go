@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/bnema/neferafk/internal/ports"
-	pam "github.com/bnema/purego-pam"
+	"bnema.dev/neferafk/internal/ports"
+	pam "bnema.dev/purego-pam"
 	"golang.org/x/sys/unix"
 )
 
