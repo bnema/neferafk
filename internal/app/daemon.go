@@ -72,7 +72,7 @@ func RunDaemon(ctx context.Context, o DaemonOptions) (result error) {
 	if err != nil {
 		return fmt.Errorf("wayland: %w", err)
 	}
-	sys, err = logind.Open(ctx, sysReq)
+	sys, err = logind.Open(ctx, sysReq, o.Log)
 	if err != nil {
 		sys = nil
 		return &UnsupportedError{Missing: []string{"logind: " + err.Error()}}

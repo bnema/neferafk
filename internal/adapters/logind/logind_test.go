@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/bnema/neferafk/internal/ports"
+	"github.com/bnema/zerowrap"
 	"github.com/godbus/dbus/v5"
 	"github.com/stretchr/testify/mock"
 	"golang.org/x/sys/unix"
@@ -333,7 +335,7 @@ func TestRunMatchingSleepCycleAndSuspendFalse(t *testing.T) {
 	}
 }
 func TestOpenOffDoesNotConnect(t *testing.T) {
-	if _, err := Open(context.Background(), ports.SystemRequirements{}); err == nil {
+	if _, err := Open(context.Background(), ports.SystemRequirements{}, zerowrap.New(zerowrap.Config{Output: io.Discard})); err == nil {
 		t.Fatal("disabled adapter unexpectedly opened")
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"math"
 	"os"
@@ -49,7 +50,7 @@ type Adapter struct {
 // Open connects only when requested. Calling it is unnecessary when all system
 // features are off. Connection failure is an unsupported capability, not a
 // reason to force system initialization at daemon startup.
-func Open(ctx context.Context, requirements ports.SystemRequirements) (*Adapter, error) {
+func Open(ctx context.Context, requirements ports.SystemRequirements, log zerowrap.Logger) (*Adapter, error) {
 	if !requirements.Session && !requirements.Sleep {
 		return nil, errors.New("logind not requested")
 	}
@@ -58,6 +59,7 @@ func Open(ctx context.Context, requirements ports.SystemRequirements) (*Adapter,
 		return nil, fmt.Errorf("system bus unavailable: %w", err)
 	}
 	a := newAdapter(connection{conn}, requirements)
+	a.log = log.WithField("component", "logind")
 	if err := a.Probe(ctx); err != nil {
 		a.Close()
 		return nil, err
@@ -65,7 +67,7 @@ func Open(ctx context.Context, requirements ports.SystemRequirements) (*Adapter,
 	return a, nil
 }
 func newAdapter(b bus, r ports.SystemRequirements) *Adapter {
-	return &Adapter{leds: os.DirFS("/sys/class/leds"), log: zerowrap.New(zerowrap.Config{}).WithField("component", "logind"), bus: b, requirements: r, signals: make(chan *dbus.Signal, 32)}
+	return &Adapter{leds: os.DirFS("/sys/class/leds"), log: zerowrap.New(zerowrap.Config{Output: io.Discard}), bus: b, requirements: r, signals: make(chan *dbus.Signal, 32)}
 }
 func (a *Adapter) call(ctx context.Context, path dbus.ObjectPath, method string, args ...any) ([]any, error) {
 	ctx, cancel := context.WithTimeout(ctx, callTimeout)
