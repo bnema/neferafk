@@ -345,15 +345,15 @@ func TestKeyboardBacklightCycle(t *testing.T) {
 			if tc.protected {
 				handle(t, p, now, ports.LockConfirmed{Generation: 1})
 			}
-			out = handle(t, p, now, ports.Activity{})
-			if count(out, true) != want {
-				t.Fatal(out)
+			// Every activity requests a restore so a failed one is retried;
+			// the adapter no-ops when nothing is saved.
+			for range 2 {
+				if out := handle(t, p, now, ports.Activity{}); count(out, true) != 1 {
+					t.Fatal(out)
+				}
 			}
 			if p.State().Protected != tc.protected {
 				t.Fatal("activity changed lock protection")
-			}
-			if count(handle(t, p, now, ports.Activity{}), true) != 0 {
-				t.Fatal("duplicate restore")
 			}
 		})
 	}

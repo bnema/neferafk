@@ -22,7 +22,8 @@ func TestKeyboardBacklightSaveRestoreAndClose(t *testing.T) {
 			if initial == "3" {
 				value = 3
 			}
-			b.EXPECT().call(mock.Anything, testOwner, testSession, sessionInterface+".SetBrightness", []any{"leds", "tpacpi::kbd_backlight", uint32(0)}).Return(nil, nil).Once()
+			b.EXPECT().call(mock.Anything, testOwner, testSession, sessionInterface+".SetBrightness", []any{"leds", "tpacpi::kbd_backlight", uint32(0)}).Return(nil, nil).Twice()
+			// A repeated off keeps the first saved value and re-sends 0.
 			a.keyboardBacklight(context.Background(), false)
 			a.keyboardBacklight(context.Background(), false)
 			b.EXPECT().call(mock.Anything, testOwner, testSession, sessionInterface+".SetBrightness", []any{"leds", "tpacpi::kbd_backlight", value}).Return(nil, errors.New("temporary")).Once()
@@ -53,6 +54,28 @@ func TestKeyboardBacklightNoDevicesOrInvalidBrightness(t *testing.T) {
 		if len(a.brightness) != 0 {
 			t.Fatal(a.brightness)
 		}
+	}
+}
+
+func TestKeyboardBacklightFailedCycleStillTurnsOffNextTime(t *testing.T) {
+	b := newMockbus(t)
+	a := newAdapter(b, ports.SystemRequirements{})
+	a.owner = testOwner
+	a.session = testSession
+	a.leds = fstest.MapFS{"asus::kbd_backlight/brightness": &fstest.MapFile{Data: []byte("2")}}
+	set := func(value uint32, err error) {
+		b.EXPECT().call(mock.Anything, testOwner, testSession, sessionInterface+".SetBrightness", []any{"leds", "asus::kbd_backlight", value}).Return(nil, err).Once()
+	}
+	set(0, errors.New("off failed"))
+	a.keyboardBacklight(context.Background(), false)
+	set(2, errors.New("restore failed"))
+	a.keyboardBacklight(context.Background(), true)
+	set(0, nil)
+	a.keyboardBacklight(context.Background(), false)
+	set(2, nil)
+	a.keyboardBacklight(context.Background(), true)
+	if len(a.brightness) != 0 {
+		t.Fatal(a.brightness)
 	}
 }
 

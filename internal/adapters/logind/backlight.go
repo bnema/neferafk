@@ -8,7 +8,8 @@ import (
 )
 
 // keyboardBacklight runs only on the adapter owner. Saved values survive
-// failed writes so a later restore (including Close) can retry them.
+// failed writes so a later restore (including Close) can retry them; an off
+// request for a device with a saved value keeps it and turns the device off again.
 func (a *Adapter) keyboardBacklight(ctx context.Context, on bool) {
 	if on {
 		for name, value := range a.brightness {
@@ -34,6 +35,7 @@ func (a *Adapter) keyboardBacklight(ctx context.Context, on bool) {
 		}
 		found = true
 		if _, saved := a.brightness[name]; saved {
+			a.setBrightness(ctx, name, 0)
 			continue
 		}
 		data, err := fs.ReadFile(a.leds, name+"/brightness")

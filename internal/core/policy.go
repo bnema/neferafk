@@ -165,10 +165,10 @@ func (p *Policy) Handle(now time.Time, event ports.PolicyEvent) ([]ports.PolicyE
 	case ports.Activity:
 		p.generation++
 		var out []ports.PolicyEffect
-		if p.kbdOff {
-			p.kbdOff = false
-			out = append(out, ports.SetKeyboardBacklight{On: true})
-		}
+		// Restore on every activity: the adapter no-ops once restored, and a
+		// failed restore is retried by the next activity.
+		p.kbdOff = false
+		out = append(out, ports.SetKeyboardBacklight{On: true})
 		if p.faded {
 			p.faded = false
 			out = append(out, ports.SetFade{Black: false, Duration: p.cfg.FadeDuration})
