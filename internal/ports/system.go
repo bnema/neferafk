@@ -46,3 +46,7 @@ func (SystemSleepReady) systemCommand() {}
 func (SystemSuspend) systemCommand()    {}
 
 type SystemRequirements struct{ Session, Sleep bool }
+
+type SystemKeyboardBacklight struct{ On bool }
+
+func (SystemKeyboardBacklight) systemCommand() {}

@@ -104,3 +104,5 @@ NEFERAFK_HEADLESS=/usr/sbin/neferwl go test -run Headless ./internal/adapters/vi
 ## License
 
 [GNU GPL v3](LICENSE).
+
+The keyboard backlight turns off with the first of fade, lock, or screens-off and returns on activity.

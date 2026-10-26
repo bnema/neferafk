@@ -30,6 +30,7 @@ type Policy struct {
 	acquiring, protected    bool
 	lockGeneration          ports.Generation
 	faded, off, beforeSleep bool
+	kbdOff                  bool
 }
 type State struct {
 	Generation                       ports.Generation
@@ -104,9 +105,17 @@ func (p *Policy) acquire(out *[]ports.PolicyEffect) {
 	if p.acquiring || p.protected {
 		return
 	}
+	p.keyboardOff(out)
 	p.acquiring = true
 	p.lockGeneration = p.generation
 	*out = append(*out, ports.AcquireLock{Generation: p.lockGeneration})
+}
+
+func (p *Policy) keyboardOff(out *[]ports.PolicyEffect) {
+	if !p.kbdOff {
+		p.kbdOff = true
+		*out = append(*out, ports.SetKeyboardBacklight{On: false})
+	}
 }
 
 func (p *Policy) dispatch() []ports.PolicyEffect {
@@ -126,9 +135,11 @@ func (p *Policy) dispatch() []ports.PolicyEffect {
 		case ports.Lock:
 			p.acquire(&out)
 		case ports.Fade:
+			p.keyboardOff(&out)
 			p.faded = true
 			out = append(out, ports.SetFade{Black: true, Duration: p.cfg.FadeDuration})
 		case ports.OutputOff:
+			p.keyboardOff(&out)
 			p.off = true
 			out = append(out, ports.SetOutputPower{On: false})
 		case ports.Sleep:
@@ -154,6 +165,10 @@ func (p *Policy) Handle(now time.Time, event ports.PolicyEvent) ([]ports.PolicyE
 	case ports.Activity:
 		p.generation++
 		var out []ports.PolicyEffect
+		if p.kbdOff {
+			p.kbdOff = false
+			out = append(out, ports.SetKeyboardBacklight{On: true})
+		}
 		if p.faded {
 			p.faded = false
 			out = append(out, ports.SetFade{Black: false, Duration: p.cfg.FadeDuration})

@@ -6,12 +6,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"math"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/bnema/neferafk/internal/ports"
+	"github.com/bnema/zerowrap"
 	"github.com/godbus/dbus/v5"
 	"golang.org/x/sys/unix"
 )
@@ -26,10 +28,14 @@ const callTimeout = 3 * time.Second
 // Adapter is single-owner: Probe, Run and Close must not execute concurrently.
 // Run owns the connection and closes it and any inhibitor on every exit.
 type Adapter struct {
-	bus          bus
-	requirements ports.SystemRequirements
-	owner        string
-	session      dbus.ObjectPath
+	leds             fs.FS
+	brightness       map[string]uint32
+	noKeyboardLogged bool
+	log              zerowrap.Logger
+	bus              bus
+	requirements     ports.SystemRequirements
+	owner            string
+	session          dbus.ObjectPath
 	// sessionSource names how session was found, for diagnostics.
 	sessionSource string
 	caps          ports.SystemCapabilities
@@ -59,7 +65,7 @@ func Open(ctx context.Context, requirements ports.SystemRequirements) (*Adapter,
 	return a, nil
 }
 func newAdapter(b bus, r ports.SystemRequirements) *Adapter {
-	return &Adapter{bus: b, requirements: r, signals: make(chan *dbus.Signal, 32)}
+	return &Adapter{leds: os.DirFS("/sys/class/leds"), log: zerowrap.New(zerowrap.Config{}).WithField("component", "logind"), bus: b, requirements: r, signals: make(chan *dbus.Signal, 32)}
 }
 func (a *Adapter) call(ctx context.Context, path dbus.ObjectPath, method string, args ...any) ([]any, error) {
 	ctx, cancel := context.WithTimeout(ctx, callTimeout)
@@ -382,6 +388,8 @@ func (a *Adapter) Run(ctx context.Context, commands <-chan ports.SystemCommand, 
 				return nil
 			}
 			switch c := cmd.(type) {
+			case ports.SystemKeyboardBacklight:
+				a.keyboardBacklight(ctx, c.On)
 			case ports.SystemSleepReady:
 				if a.preparing && c.Cycle == a.cycle {
 					a.release()
@@ -489,6 +497,7 @@ func (a *Adapter) Close() error {
 	if a.closed {
 		return nil
 	}
+	a.keyboardBacklight(context.Background(), true)
 	a.closed = true
 	a.release()
 	return a.bus.close()

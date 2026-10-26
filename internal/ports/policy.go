@@ -72,7 +72,12 @@ func (SleepReady) policyEffect()     {}
 
 // LockRequested asks policy to acquire the session lock now (logind Lock
 // signal or the private control socket). It is idempotent while a lock is
-// being acquired or held and never orders/forces any other action.
+// being acquired or held. Acquisition also turns off the keyboard backlight.
 type LockRequested struct{}
 
 func (LockRequested) policyEvent() {}
+
+// SetKeyboardBacklight restores saved brightness when On is true.
+type SetKeyboardBacklight struct{ On bool }
+
+func (SetKeyboardBacklight) policyEffect() {}

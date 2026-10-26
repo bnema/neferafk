@@ -310,6 +310,8 @@ func (o *Owner) apply(ctx context.Context, effect ports.PolicyEffect) error {
 		}
 	case ports.SetOutputPower:
 		o.wq = append(o.wq, ports.OutputPower(e))
+	case ports.SetKeyboardBacklight:
+		o.sq = append(o.sq, ports.SystemKeyboardBacklight(e))
 	case ports.Suspend:
 		o.sq = append(o.sq, ports.SystemSuspend{})
 	case ports.SleepReady:

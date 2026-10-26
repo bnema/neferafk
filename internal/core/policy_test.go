@@ -124,7 +124,7 @@ func TestAcquiringHoldsOnlyDueOffSleepActivityNeverUnlocks(t *testing.T) {
 	if !p.protected || p.off || p.faded {
 		t.Fatal(p.State())
 	}
-	if len(out) != 3 {
+	if len(out) != 4 {
 		t.Fatal(out)
 	}
 	if len(handle(t, p, now, ports.IdleDue{Generation: 1, After: time.Second})) != 0 {
@@ -193,7 +193,7 @@ func TestBeforeSleepHonorsLockDisabled(t *testing.T) {
 				t.Fatal("forced disabled lock")
 			}
 		} else {
-			if _, ok := out[0].(ports.AcquireLock); !ok {
+			if _, ok := out[1].(ports.AcquireLock); !ok {
 				t.Fatal(out)
 			}
 			out = handle(t, p, now, ports.LockConfirmed{Generation: 1})
@@ -285,7 +285,7 @@ func TestLockRequestedAcquiresOnceAndNeverUnlocks(t *testing.T) {
 	now := time.Unix(100, 0)
 	p, _, _ := New(config([4]time.Duration{0, 0, time.Minute, 0}), now)
 	out := handle(t, p, now, ports.LockRequested{})
-	if len(out) != 1 || out[0] != (ports.AcquireLock{Generation: 1}) {
+	if len(out) != 2 || out[0] != (ports.SetKeyboardBacklight{On: false}) || out[1] != (ports.AcquireLock{Generation: 1}) {
 		t.Fatalf("lock request %v", out)
 	}
 	if got := handle(t, p, now, ports.LockRequested{}); len(got) != 0 {
@@ -298,5 +298,63 @@ func TestLockRequestedAcquiresOnceAndNeverUnlocks(t *testing.T) {
 	handle(t, p, now, ports.Activity{})
 	if !p.State().Protected {
 		t.Fatal("activity released the lock")
+	}
+}
+
+func TestKeyboardBacklightCycle(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		ds        [4]time.Duration
+		event     ports.PolicyEvent
+		protected bool
+		off       bool
+	}{
+		{"fade first", [4]time.Duration{2 * time.Second, time.Second, 3 * time.Second, 0}, ports.IdleDue{Generation: 1, After: time.Second}, false, true},
+		{"lock first", [4]time.Duration{time.Second, 2 * time.Second, 3 * time.Second, 0}, ports.IdleDue{Generation: 1, After: time.Second}, true, true},
+		{"output only", [4]time.Duration{0, 0, time.Second, 0}, ports.IdleDue{Generation: 1, After: time.Second}, false, true},
+		{"manual", [4]time.Duration{}, ports.LockRequested{}, true, true},
+		{"before sleep", [4]time.Duration{time.Second, 0, 0, 0}, ports.BeforeSleep{}, true, true},
+		{"disabled", [4]time.Duration{}, ports.IdleDue{Generation: 1, After: time.Second}, false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Unix(100, 0)
+			p, _, err := New(config(tc.ds), now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			count := func(out []ports.PolicyEffect, on bool) int {
+				n := 0
+				for _, e := range out {
+					if e == (ports.SetKeyboardBacklight{On: on}) {
+						n++
+					}
+				}
+				return n
+			}
+			out := handle(t, p, now, tc.event)
+			want := 0
+			if tc.off {
+				want = 1
+			}
+			if count(out, false) != want {
+				t.Fatal(out)
+			}
+			if count(handle(t, p, now, tc.event), false) != 0 {
+				t.Fatal("duplicate off")
+			}
+			if tc.protected {
+				handle(t, p, now, ports.LockConfirmed{Generation: 1})
+			}
+			out = handle(t, p, now, ports.Activity{})
+			if count(out, true) != want {
+				t.Fatal(out)
+			}
+			if p.State().Protected != tc.protected {
+				t.Fatal("activity changed lock protection")
+			}
+			if count(handle(t, p, now, ports.Activity{}), true) != 0 {
+				t.Fatal("duplicate restore")
+			}
+		})
 	}
 }

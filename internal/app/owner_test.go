@@ -206,6 +206,9 @@ func TestIdleActionsAreIndependentAndDisabledOnesNeverFire(t *testing.T) {
 	if c := h.wlCommand(); c != (ports.OutputPower{On: false}) {
 		t.Fatalf("command %#v", c)
 	}
+	if c := h.sysCommand(); c != (ports.SystemKeyboardBacklight{On: false}) {
+		t.Fatal(c)
+	}
 	h.noSysCommand() // sleep is off: nothing suspends
 	if st := h.status(); st.Acquiring || st.Protected {
 		t.Fatalf("locked without lock.after: %+v", st)
@@ -235,7 +238,13 @@ func TestActivityUndoesFadeWakesOutputsButNeverUnlocks(t *testing.T) {
 	if c := h.wlCommand(); c != (ports.OutputPower{On: false}) {
 		t.Fatalf("command %#v", c)
 	}
+	if c := h.sysCommand(); c != (ports.SystemKeyboardBacklight{On: false}) {
+		t.Fatal(c)
+	}
 	h.send(ports.WaylandActivity{})
+	if c := h.sysCommand(); c != (ports.SystemKeyboardBacklight{On: true}) {
+		t.Fatal(c)
+	}
 	if f := <-fades; f.Black {
 		t.Fatal("fade not reversed")
 	}
@@ -275,6 +284,9 @@ func TestLockIsNeverForcedOrReordered(t *testing.T) {
 	h2.send(ports.WaylandIdle{After: step})
 	l := lockOf(t, locks)
 	h2.noWlCommand()
+	if c := h2.sysCommand(); c != (ports.SystemKeyboardBacklight{On: false}) {
+		t.Fatal(c)
+	}
 	h2.noSysCommand()
 	h2.visEv <- ports.LockConfirmed{Generation: l.Generation}
 	if c := h2.wlCommand(); c != (ports.OutputPower{On: false}) {
@@ -345,7 +357,10 @@ func TestSleepReadyOnlyAfterLockConfirmed(t *testing.T) {
 	h.deadlines()
 	h.sysEv <- ports.SleepPreparation{Preparing: true, Cycle: 7}
 	l := lockOf(t, locks) // acquiring the lock is what BeforeSleep asks for
-	h.noSysCommand()      // ...and the inhibitor is held until it is confirmed
+	if c := h.sysCommand(); c != (ports.SystemKeyboardBacklight{On: false}) {
+		t.Fatal(c)
+	}
+	h.noSysCommand() // ...and the inhibitor is held until it is confirmed
 	h.visEv <- ports.LockConfirmed{Generation: l.Generation}
 	if c := h.sysCommand(); c != (ports.SystemSleepReady{Cycle: 7}) {
 		t.Fatalf("command %#v", c)
