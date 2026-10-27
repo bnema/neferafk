@@ -7,7 +7,6 @@ package logind
 import (
 	"context"
 
-	"github.com/godbus/dbus/v5"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -48,12 +47,12 @@ func (_m *mockbus) EXPECT() *mockbus_Expecter {
 }
 
 // call provides a mock function for the type mockbus
-func (_mock *mockbus) call(context1 context.Context, s string, objectPath dbus.ObjectPath, s1 string, anyMoqParams ...any) ([]any, error) {
+func (_mock *mockbus) call(context1 context.Context, s string, objectPathMoqParam objectPath, s1 string, anyMoqParams ...any) ([]any, error) {
 	var tmpRet mock.Arguments
 	if len(anyMoqParams) > 0 {
-		tmpRet = _mock.Called(context1, s, objectPath, s1, anyMoqParams)
+		tmpRet = _mock.Called(context1, s, objectPathMoqParam, s1, anyMoqParams)
 	} else {
-		tmpRet = _mock.Called(context1, s, objectPath, s1)
+		tmpRet = _mock.Called(context1, s, objectPathMoqParam, s1)
 	}
 	ret := tmpRet
 
@@ -63,18 +62,18 @@ func (_mock *mockbus) call(context1 context.Context, s string, objectPath dbus.O
 
 	var r0 []any
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, dbus.ObjectPath, string, ...any) ([]any, error)); ok {
-		return returnFunc(context1, s, objectPath, s1, anyMoqParams...)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, objectPath, string, ...any) ([]any, error)); ok {
+		return returnFunc(context1, s, objectPathMoqParam, s1, anyMoqParams...)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, dbus.ObjectPath, string, ...any) []any); ok {
-		r0 = returnFunc(context1, s, objectPath, s1, anyMoqParams...)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, objectPath, string, ...any) []any); ok {
+		r0 = returnFunc(context1, s, objectPathMoqParam, s1, anyMoqParams...)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]any)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, dbus.ObjectPath, string, ...any) error); ok {
-		r1 = returnFunc(context1, s, objectPath, s1, anyMoqParams...)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, objectPath, string, ...any) error); ok {
+		r1 = returnFunc(context1, s, objectPathMoqParam, s1, anyMoqParams...)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -89,15 +88,15 @@ type mockbus_call_Call struct {
 // call is a helper method to define mock.On call
 //   - context1 context.Context
 //   - s string
-//   - objectPath dbus.ObjectPath
+//   - objectPathMoqParam objectPath
 //   - s1 string
 //   - anyMoqParams ...any
-func (_e *mockbus_Expecter) call(context1 any, s any, objectPath any, s1 any, anyMoqParams ...any) *mockbus_call_Call {
+func (_e *mockbus_Expecter) call(context1 any, s any, objectPathMoqParam any, s1 any, anyMoqParams ...any) *mockbus_call_Call {
 	return &mockbus_call_Call{Call: _e.mock.On("call",
-		append([]any{context1, s, objectPath, s1}, anyMoqParams...)...)}
+		append([]any{context1, s, objectPathMoqParam, s1}, anyMoqParams...)...)}
 }
 
-func (_c *mockbus_call_Call) Run(run func(context1 context.Context, s string, objectPath dbus.ObjectPath, s1 string, anyMoqParams ...any)) *mockbus_call_Call {
+func (_c *mockbus_call_Call) Run(run func(context1 context.Context, s string, objectPathMoqParam objectPath, s1 string, anyMoqParams ...any)) *mockbus_call_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -107,9 +106,9 @@ func (_c *mockbus_call_Call) Run(run func(context1 context.Context, s string, ob
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
-		var arg2 dbus.ObjectPath
+		var arg2 objectPath
 		if args[2] != nil {
-			arg2 = args[2].(dbus.ObjectPath)
+			arg2 = args[2].(objectPath)
 		}
 		var arg3 string
 		if args[3] != nil {
@@ -137,7 +136,7 @@ func (_c *mockbus_call_Call) Return(anyMoqParams1 []any, err error) *mockbus_cal
 	return _c
 }
 
-func (_c *mockbus_call_Call) RunAndReturn(run func(context1 context.Context, s string, objectPath dbus.ObjectPath, s1 string, anyMoqParams ...any) ([]any, error)) *mockbus_call_Call {
+func (_c *mockbus_call_Call) RunAndReturn(run func(context1 context.Context, s string, objectPathMoqParam objectPath, s1 string, anyMoqParams ...any) ([]any, error)) *mockbus_call_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -187,16 +186,16 @@ func (_c *mockbus_close_Call) RunAndReturn(run func() error) *mockbus_close_Call
 }
 
 // match provides a mock function for the type mockbus
-func (_mock *mockbus) match(context1 context.Context, s string) error {
-	ret := _mock.Called(context1, s)
+func (_mock *mockbus) match(context1 context.Context, signalMatchMoqParam signalMatch) error {
+	ret := _mock.Called(context1, signalMatchMoqParam)
 
 	if len(ret) == 0 {
 		panic("no return value specified for match")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
-		r0 = returnFunc(context1, s)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, signalMatch) error); ok {
+		r0 = returnFunc(context1, signalMatchMoqParam)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -210,20 +209,20 @@ type mockbus_match_Call struct {
 
 // match is a helper method to define mock.On call
 //   - context1 context.Context
-//   - s string
-func (_e *mockbus_Expecter) match(context1 any, s any) *mockbus_match_Call {
-	return &mockbus_match_Call{Call: _e.mock.On("match", context1, s)}
+//   - signalMatchMoqParam signalMatch
+func (_e *mockbus_Expecter) match(context1 any, signalMatchMoqParam any) *mockbus_match_Call {
+	return &mockbus_match_Call{Call: _e.mock.On("match", context1, signalMatchMoqParam)}
 }
 
-func (_c *mockbus_match_Call) Run(run func(context1 context.Context, s string)) *mockbus_match_Call {
+func (_c *mockbus_match_Call) Run(run func(context1 context.Context, signalMatchMoqParam signalMatch)) *mockbus_match_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 string
+		var arg1 signalMatch
 		if args[1] != nil {
-			arg1 = args[1].(string)
+			arg1 = args[1].(signalMatch)
 		}
 		run(
 			arg0,
@@ -238,14 +237,14 @@ func (_c *mockbus_match_Call) Return(err error) *mockbus_match_Call {
 	return _c
 }
 
-func (_c *mockbus_match_Call) RunAndReturn(run func(context1 context.Context, s string) error) *mockbus_match_Call {
+func (_c *mockbus_match_Call) RunAndReturn(run func(context1 context.Context, signalMatchMoqParam signalMatch) error) *mockbus_match_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // removeSignals provides a mock function for the type mockbus
-func (_mock *mockbus) removeSignals(signalCh chan<- *dbus.Signal) {
-	_mock.Called(signalCh)
+func (_mock *mockbus) removeSignals(signalMoqParamCh chan<- *signal) {
+	_mock.Called(signalMoqParamCh)
 	return
 }
 
@@ -255,16 +254,16 @@ type mockbus_removeSignals_Call struct {
 }
 
 // removeSignals is a helper method to define mock.On call
-//   - signalCh chan<- *dbus.Signal
-func (_e *mockbus_Expecter) removeSignals(signalCh any) *mockbus_removeSignals_Call {
-	return &mockbus_removeSignals_Call{Call: _e.mock.On("removeSignals", signalCh)}
+//   - signalMoqParamCh chan<- *signal
+func (_e *mockbus_Expecter) removeSignals(signalMoqParamCh any) *mockbus_removeSignals_Call {
+	return &mockbus_removeSignals_Call{Call: _e.mock.On("removeSignals", signalMoqParamCh)}
 }
 
-func (_c *mockbus_removeSignals_Call) Run(run func(signalCh chan<- *dbus.Signal)) *mockbus_removeSignals_Call {
+func (_c *mockbus_removeSignals_Call) Run(run func(signalMoqParamCh chan<- *signal)) *mockbus_removeSignals_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 chan<- *dbus.Signal
+		var arg0 chan<- *signal
 		if args[0] != nil {
-			arg0 = args[0].(chan<- *dbus.Signal)
+			arg0 = args[0].(chan<- *signal)
 		}
 		run(
 			arg0,
@@ -278,14 +277,14 @@ func (_c *mockbus_removeSignals_Call) Return() *mockbus_removeSignals_Call {
 	return _c
 }
 
-func (_c *mockbus_removeSignals_Call) RunAndReturn(run func(signalCh chan<- *dbus.Signal)) *mockbus_removeSignals_Call {
+func (_c *mockbus_removeSignals_Call) RunAndReturn(run func(signalMoqParamCh chan<- *signal)) *mockbus_removeSignals_Call {
 	_c.Run(run)
 	return _c
 }
 
 // signals provides a mock function for the type mockbus
-func (_mock *mockbus) signals(signalCh chan<- *dbus.Signal) {
-	_mock.Called(signalCh)
+func (_mock *mockbus) signals(signalMoqParamCh chan<- *signal) {
+	_mock.Called(signalMoqParamCh)
 	return
 }
 
@@ -295,16 +294,16 @@ type mockbus_signals_Call struct {
 }
 
 // signals is a helper method to define mock.On call
-//   - signalCh chan<- *dbus.Signal
-func (_e *mockbus_Expecter) signals(signalCh any) *mockbus_signals_Call {
-	return &mockbus_signals_Call{Call: _e.mock.On("signals", signalCh)}
+//   - signalMoqParamCh chan<- *signal
+func (_e *mockbus_Expecter) signals(signalMoqParamCh any) *mockbus_signals_Call {
+	return &mockbus_signals_Call{Call: _e.mock.On("signals", signalMoqParamCh)}
 }
 
-func (_c *mockbus_signals_Call) Run(run func(signalCh chan<- *dbus.Signal)) *mockbus_signals_Call {
+func (_c *mockbus_signals_Call) Run(run func(signalMoqParamCh chan<- *signal)) *mockbus_signals_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 chan<- *dbus.Signal
+		var arg0 chan<- *signal
 		if args[0] != nil {
-			arg0 = args[0].(chan<- *dbus.Signal)
+			arg0 = args[0].(chan<- *signal)
 		}
 		run(
 			arg0,
@@ -318,25 +317,25 @@ func (_c *mockbus_signals_Call) Return() *mockbus_signals_Call {
 	return _c
 }
 
-func (_c *mockbus_signals_Call) RunAndReturn(run func(signalCh chan<- *dbus.Signal)) *mockbus_signals_Call {
+func (_c *mockbus_signals_Call) RunAndReturn(run func(signalMoqParamCh chan<- *signal)) *mockbus_signals_Call {
 	_c.Run(run)
 	return _c
 }
 
 // suspend provides a mock function for the type mockbus
-func (_mock *mockbus) suspend(context1 context.Context, s string) <-chan *dbus.Call {
+func (_mock *mockbus) suspend(context1 context.Context, s string) <-chan *suspendResult {
 	ret := _mock.Called(context1, s)
 
 	if len(ret) == 0 {
 		panic("no return value specified for suspend")
 	}
 
-	var r0 <-chan *dbus.Call
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) <-chan *dbus.Call); ok {
+	var r0 <-chan *suspendResult
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) <-chan *suspendResult); ok {
 		r0 = returnFunc(context1, s)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(<-chan *dbus.Call)
+			r0 = ret.Get(0).(<-chan *suspendResult)
 		}
 	}
 	return r0
@@ -372,12 +371,12 @@ func (_c *mockbus_suspend_Call) Run(run func(context1 context.Context, s string)
 	return _c
 }
 
-func (_c *mockbus_suspend_Call) Return(callCh <-chan *dbus.Call) *mockbus_suspend_Call {
-	_c.Call.Return(callCh)
+func (_c *mockbus_suspend_Call) Return(suspendResultMoqParamCh <-chan *suspendResult) *mockbus_suspend_Call {
+	_c.Call.Return(suspendResultMoqParamCh)
 	return _c
 }
 
-func (_c *mockbus_suspend_Call) RunAndReturn(run func(context1 context.Context, s string) <-chan *dbus.Call) *mockbus_suspend_Call {
+func (_c *mockbus_suspend_Call) RunAndReturn(run func(context1 context.Context, s string) <-chan *suspendResult) *mockbus_suspend_Call {
 	_c.Call.Return(run)
 	return _c
 }

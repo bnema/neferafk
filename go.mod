@@ -9,8 +9,8 @@ require (
 	bnema.dev/nefergui v0.8.0
 	bnema.dev/purego-pam v0.2.0
 	bnema.dev/wlturbo v0.7.0
+	bnema.dev/zerobus v0.6.0
 	bnema.dev/zerowrap v1.5.0
-	github.com/godbus/dbus/v5 v5.2.4
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/sys v0.49.0
 )

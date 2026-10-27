@@ -14,13 +14,12 @@ import (
 	"time"
 
 	"bnema.dev/neferafk/internal/ports"
+	"bnema.dev/zerobus"
 	"bnema.dev/zerowrap"
-	"github.com/godbus/dbus/v5"
-	"golang.org/x/sys/unix"
 )
 
 const service = "org.freedesktop.login1"
-const managerPath dbus.ObjectPath = "/org/freedesktop/login1"
+const managerPath objectPath = "/org/freedesktop/login1"
 const managerInterface = "org.freedesktop.login1.Manager"
 const sessionInterface = "org.freedesktop.login1.Session"
 const userInterface = "org.freedesktop.login1.User"
@@ -36,11 +35,11 @@ type Adapter struct {
 	bus              bus
 	requirements     ports.SystemRequirements
 	owner            string
-	session          dbus.ObjectPath
+	session          objectPath
 	// sessionSource names how session was found, for diagnostics.
 	sessionSource string
 	caps          ports.SystemCapabilities
-	signals       chan *dbus.Signal
+	signals       chan *signal
 	inhibitor     *os.File
 	cycle         uint64
 	preparing     bool
@@ -54,11 +53,11 @@ func Open(ctx context.Context, requirements ports.SystemRequirements, log zerowr
 	if !requirements.Session && !requirements.Sleep {
 		return nil, errors.New("logind not requested")
 	}
-	conn, err := dbus.ConnectSystemBus(dbus.WithContext(ctx))
+	conn, err := zerobus.SystemBusDispatcher(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("system bus unavailable: %w", err)
 	}
-	a := newAdapter(connection{conn}, requirements)
+	a := newAdapter(newConnection(conn, log), requirements)
 	a.log = log.WithField("component", "logind")
 	if err := a.Probe(ctx); err != nil {
 		a.Close()
@@ -67,14 +66,14 @@ func Open(ctx context.Context, requirements ports.SystemRequirements, log zerowr
 	return a, nil
 }
 func newAdapter(b bus, r ports.SystemRequirements) *Adapter {
-	return &Adapter{leds: os.DirFS("/sys/class/leds"), log: zerowrap.New(zerowrap.Config{Output: io.Discard}), bus: b, requirements: r, signals: make(chan *dbus.Signal, 32)}
+	return &Adapter{leds: os.DirFS("/sys/class/leds"), log: zerowrap.New(zerowrap.Config{Output: io.Discard}), bus: b, requirements: r, signals: make(chan *signal, 32)}
 }
-func (a *Adapter) call(ctx context.Context, path dbus.ObjectPath, method string, args ...any) ([]any, error) {
+func (a *Adapter) call(ctx context.Context, path objectPath, method string, args ...any) ([]any, error) {
 	ctx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
 	return a.bus.call(ctx, a.owner, path, method, args...)
 }
-func (a *Adapter) property(ctx context.Context, path dbus.ObjectPath, iface, name string) (any, error) {
+func (a *Adapter) property(ctx context.Context, path objectPath, iface, name string) (any, error) {
 	body, err := a.call(ctx, path, "org.freedesktop.DBus.Properties.Get", iface, name)
 	if err != nil {
 		return nil, err
@@ -82,7 +81,7 @@ func (a *Adapter) property(ctx context.Context, path dbus.ObjectPath, iface, nam
 	if len(body) != 1 {
 		return nil, errors.New("invalid property reply")
 	}
-	v, ok := body[0].(dbus.Variant)
+	v, ok := body[0].(variant)
 	if !ok {
 		return nil, errors.New("invalid property variant")
 	}
@@ -118,7 +117,7 @@ func (a *Adapter) Probe(ctx context.Context) error {
 		if len(body) != 1 {
 			return errors.New("invalid session reply")
 		}
-		path, ok := body[0].(dbus.ObjectPath)
+		path, ok := body[0].(objectPath)
 		if !ok || !path.IsValid() || !strings.HasPrefix(string(path), "/org/freedesktop/login1/session/") {
 			return errors.New("invalid session path")
 		}
@@ -206,7 +205,7 @@ func (a *Adapter) currentSession(ctx context.Context) ([]any, string, error) {
 	return nil, "", fmt.Errorf("current process session unavailable: %w", errors.Join(errs...))
 }
 
-func (a *Adapter) sessionByID(ctx context.Context, id string) (dbus.ObjectPath, error) {
+func (a *Adapter) sessionByID(ctx context.Context, id string) (objectPath, error) {
 	body, err := a.call(ctx, managerPath, managerInterface+".GetSession", id)
 	if err != nil {
 		return "", err
@@ -214,7 +213,7 @@ func (a *Adapter) sessionByID(ctx context.Context, id string) (dbus.ObjectPath, 
 	if len(body) != 1 {
 		return "", errors.New("invalid session reply")
 	}
-	path, ok := body[0].(dbus.ObjectPath)
+	path, ok := body[0].(objectPath)
 	if !ok || !path.IsValid() {
 		return "", errors.New("invalid session path")
 	}
@@ -226,7 +225,7 @@ func (a *Adapter) sessionByID(ctx context.Context, id string) (dbus.ObjectPath, 
 // (logged in, not foreground) is accepted so a daemon started while the user
 // is on another VT still binds; with two graphical sessions of the same user
 // a stale XDG_SESSION_ID may thus pick the background one (same UID only).
-func (a *Adapter) liveGraphical(ctx context.Context, path dbus.ObjectPath) error {
+func (a *Adapter) liveGraphical(ctx context.Context, path objectPath) error {
 	value, err := a.property(ctx, path, sessionInterface, "Type")
 	if err != nil {
 		return fmt.Errorf("%s: %w", path, err)
@@ -246,7 +245,7 @@ func (a *Adapter) liveGraphical(ctx context.Context, path dbus.ObjectPath) error
 
 // displaySession returns the real UID's primary (Display) session from
 // logind. logind prefers a graphical one; liveGraphical enforces it.
-func (a *Adapter) displaySession(ctx context.Context) (dbus.ObjectPath, error) {
+func (a *Adapter) displaySession(ctx context.Context) (objectPath, error) {
 	body, err := a.call(ctx, managerPath, managerInterface+".GetUser", uint32(os.Getuid()))
 	if err != nil {
 		return "", err
@@ -254,7 +253,7 @@ func (a *Adapter) displaySession(ctx context.Context) (dbus.ObjectPath, error) {
 	if len(body) != 1 {
 		return "", errors.New("invalid user reply")
 	}
-	user, ok := body[0].(dbus.ObjectPath)
+	user, ok := body[0].(objectPath)
 	if !ok || !user.IsValid() {
 		return "", errors.New("invalid user path")
 	}
@@ -266,7 +265,7 @@ func (a *Adapter) displaySession(ctx context.Context) (dbus.ObjectPath, error) {
 	if !ok || len(fields) != 2 {
 		return "", errors.New("invalid user Display property")
 	}
-	path, ok := fields[1].(dbus.ObjectPath)
+	path, ok := fields[1].(objectPath)
 	if !ok || !path.IsValid() || path == "/" {
 		return "", errors.New("no display session")
 	}
@@ -303,23 +302,23 @@ func (a *Adapter) Run(ctx context.Context, commands <-chan ports.SystemCommand, 
 	a.bus.signals(a.signals)
 	defer a.bus.removeSignals(a.signals)
 	paths := []struct {
-		path  dbus.ObjectPath
+		path  objectPath
 		iface string
 	}{}
 	if a.requirements.Session {
 		paths = append(paths, struct {
-			path  dbus.ObjectPath
+			path  objectPath
 			iface string
 		}{a.session, sessionInterface})
 	}
 	if a.requirements.Sleep {
 		paths = append(paths, struct {
-			path  dbus.ObjectPath
+			path  objectPath
 			iface string
 		}{managerPath, managerInterface})
 	}
 	for _, p := range paths {
-		rule := fmt.Sprintf("type='signal',sender='%s',path='%s',interface='%s'", a.owner, p.path, p.iface)
+		rule := signalMatch{Sender: a.owner, Path: p.path, Interface: p.iface}
 		bounded, cancel := context.WithTimeout(ctx, callTimeout)
 		err := a.bus.match(bounded, rule)
 		cancel()
@@ -336,7 +335,7 @@ func (a *Adapter) Run(ctx context.Context, commands <-chan ports.SystemCommand, 
 	if err := a.emit(ctx, events, ports.SystemCapabilityReport{Capabilities: a.Capabilities()}); err != nil {
 		return err
 	}
-	var suspendReply <-chan *dbus.Call
+	var suspendReply <-chan *suspendResult
 	var suspendCancel context.CancelFunc
 	defer func() {
 		if suspendCancel != nil {
@@ -359,7 +358,7 @@ func (a *Adapter) Run(ctx context.Context, commands <-chan ports.SystemCommand, 
 		case <-ctx.Done():
 			return ctx.Err()
 		case sig, ok := <-a.signals:
-			if !ok {
+			if !ok || sig == nil {
 				return errors.New("system bus signal stream closed")
 			}
 			event, ok := parseSignal(sig, a.owner, a.session)
@@ -438,7 +437,7 @@ func (a *Adapter) Run(ctx context.Context, commands <-chan ports.SystemCommand, 
 	}
 }
 
-func parseSignal(sig *dbus.Signal, owner string, session dbus.ObjectPath) (ports.SystemEvent, bool) {
+func parseSignal(sig *signal, owner string, session objectPath) (ports.SystemEvent, bool) {
 	if sig == nil || sig.Sender != owner {
 		return nil, false
 	}
@@ -469,24 +468,17 @@ func (a *Adapter) inhibit(ctx context.Context) error {
 	}
 	if len(body) != 1 {
 		for _, value := range body {
-			if fd, ok := value.(dbus.UnixFD); ok && fd >= 0 {
-				_ = unix.Close(int(fd))
+			if f, ok := value.(*os.File); ok {
+				_ = f.Close()
 			}
 		}
 		return errors.New("invalid inhibitor reply")
 	}
-	fd, ok := body[0].(dbus.UnixFD)
-	if !ok || fd < 0 {
+	f, ok := body[0].(*os.File)
+	if !ok || f == nil {
 		return errors.New("invalid inhibitor descriptor")
 	}
-	// godbus returns the received descriptor directly, not an os.File and not
-	// an owned duplicate. Atomically duplicate CLOEXEC then close the received FD.
-	dup, err := unix.FcntlInt(uintptr(fd), unix.F_DUPFD_CLOEXEC, 0)
-	_ = unix.Close(int(fd))
-	if err != nil {
-		return err
-	}
-	a.inhibitor = os.NewFile(uintptr(dup), "logind-sleep-delay")
+	a.inhibitor = f
 	return nil
 }
 func (a *Adapter) release() {

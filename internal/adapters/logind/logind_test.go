@@ -11,26 +11,26 @@ import (
 
 	"bnema.dev/neferafk/internal/ports"
 	"bnema.dev/zerowrap"
-	"github.com/godbus/dbus/v5"
+
 	"github.com/stretchr/testify/mock"
 	"golang.org/x/sys/unix"
 )
 
 const testOwner = ":1.42"
-const testSession dbus.ObjectPath = "/org/freedesktop/login1/session/c1"
+const testSession objectPath = "/org/freedesktop/login1/session/c1"
 
 func expectProbe(t *testing.T, b *mockbus, uid uint32) {
 	t.Helper()
 	bounded := mock.MatchedBy(func(ctx context.Context) bool { d, ok := ctx.Deadline(); return ok && time.Until(d) <= callTimeout })
-	b.EXPECT().call(bounded, "org.freedesktop.DBus", dbus.ObjectPath("/org/freedesktop/DBus"), "org.freedesktop.DBus.GetNameOwner", []any{service}).Return([]any{testOwner}, nil).Once()
+	b.EXPECT().call(bounded, "org.freedesktop.DBus", objectPath("/org/freedesktop/DBus"), "org.freedesktop.DBus.GetNameOwner", []any{service}).Return([]any{testOwner}, nil).Once()
 	b.EXPECT().call(bounded, testOwner, managerPath, managerInterface+".GetSessionByPID", []any{uint32(os.Getpid())}).Return([]any{testSession}, nil).Once()
-	b.EXPECT().call(bounded, testOwner, testSession, "org.freedesktop.DBus.Properties.Get", []any{sessionInterface, "User"}).Return([]any{dbus.MakeVariant([]any{uid, dbus.ObjectPath("/org/freedesktop/login1/user/_1000")})}, nil).Once()
+	b.EXPECT().call(bounded, testOwner, testSession, "org.freedesktop.DBus.Properties.Get", []any{sessionInterface, "User"}).Return([]any{makeVariant([]any{uid, objectPath("/org/freedesktop/login1/user/_1000")})}, nil).Once()
 }
 func TestProbeCurrentPIDRealUIDAndReadOnly(t *testing.T) {
 	b := newMockbus(t)
 	expectProbe(t, b, uint32(os.Getuid()))
 	b.EXPECT().call(mock.Anything, testOwner, managerPath, managerInterface+".CanSuspend").Return([]any{"yes"}, nil).Once()
-	b.EXPECT().call(mock.Anything, testOwner, managerPath, "org.freedesktop.DBus.Properties.Get", []any{managerInterface, "InhibitDelayMaxUSec"}).Return([]any{dbus.MakeVariant(uint64(5_000_000))}, nil).Once()
+	b.EXPECT().call(mock.Anything, testOwner, managerPath, "org.freedesktop.DBus.Properties.Get", []any{managerInterface, "InhibitDelayMaxUSec"}).Return([]any{makeVariant(uint64(5_000_000))}, nil).Once()
 	b.EXPECT().unixFDs().Return(true).Once()
 	a := newAdapter(b, ports.SystemRequirements{Session: true, Sleep: true})
 	if err := a.Probe(context.Background()); err != nil {
@@ -45,35 +45,35 @@ func TestProbeCurrentPIDRealUIDAndReadOnly(t *testing.T) {
 	// No mutating call was configured: generated mock rejects Inhibit/Suspend.
 }
 
-const testUser dbus.ObjectPath = "/org/freedesktop/login1/user/_1000"
-const staleSession dbus.ObjectPath = "/org/freedesktop/login1/session/c9"
+const testUser objectPath = "/org/freedesktop/login1/user/_1000"
+const staleSession objectPath = "/org/freedesktop/login1/session/c9"
 
 var errPID, errXDG, errUser = errors.New("pid lookup"), errors.New("xdg lookup"), errors.New("user lookup")
 
 // expectNoPIDSession answers the owner lookup and fails the PID session.
 func expectNoPIDSession(b *mockbus) {
-	b.EXPECT().call(mock.Anything, "org.freedesktop.DBus", dbus.ObjectPath("/org/freedesktop/DBus"), "org.freedesktop.DBus.GetNameOwner", []any{service}).Return([]any{testOwner}, nil).Once()
+	b.EXPECT().call(mock.Anything, "org.freedesktop.DBus", objectPath("/org/freedesktop/DBus"), "org.freedesktop.DBus.GetNameOwner", []any{service}).Return([]any{testOwner}, nil).Once()
 	b.EXPECT().call(mock.Anything, testOwner, managerPath, managerInterface+".GetSessionByPID", []any{uint32(os.Getpid())}).Return(nil, errPID).Once()
 }
-func expectSessionProperty(b *mockbus, path dbus.ObjectPath, name string, value any) {
-	b.EXPECT().call(mock.Anything, testOwner, path, "org.freedesktop.DBus.Properties.Get", []any{sessionInterface, name}).Return([]any{dbus.MakeVariant(value)}, nil).Once()
+func expectSessionProperty(b *mockbus, path objectPath, name string, value any) {
+	b.EXPECT().call(mock.Anything, testOwner, path, "org.freedesktop.DBus.Properties.Get", []any{sessionInterface, name}).Return([]any{makeVariant(value)}, nil).Once()
 }
 
 // expectSessionKind answers Type, then State only when Type is graphical.
-func expectSessionKind(b *mockbus, path dbus.ObjectPath, typ, state string) {
+func expectSessionKind(b *mockbus, path objectPath, typ, state string) {
 	expectSessionProperty(b, path, "Type", typ)
 	if typ == "wayland" || typ == "x11" {
 		expectSessionProperty(b, path, "State", state)
 	}
 }
-func expectSessionUID(b *mockbus, path dbus.ObjectPath, uid uint32) {
+func expectSessionUID(b *mockbus, path objectPath, uid uint32) {
 	expectSessionProperty(b, path, "User", []any{uid, testUser})
 }
 
 // expectDisplay answers the GetUser + User.Display fallback with display.
 func expectDisplay(b *mockbus, display any) {
 	b.EXPECT().call(mock.Anything, testOwner, managerPath, managerInterface+".GetUser", []any{uint32(os.Getuid())}).Return([]any{testUser}, nil).Once()
-	b.EXPECT().call(mock.Anything, testOwner, testUser, "org.freedesktop.DBus.Properties.Get", []any{userInterface, "Display"}).Return([]any{dbus.MakeVariant(display)}, nil).Once()
+	b.EXPECT().call(mock.Anything, testOwner, testUser, "org.freedesktop.DBus.Properties.Get", []any{userInterface, "Display"}).Return([]any{makeVariant(display)}, nil).Once()
 }
 
 // A compositor run as a systemd user service gives its children no PID
@@ -183,14 +183,14 @@ func TestDisplaySessionRejectsMalformedReplies(t *testing.T) {
 		"display not tuple":  {user: []any{testUser}, display: "c1"},
 		"display short":      {user: []any{testUser}, display: []any{"c1"}},
 		"display not a path": {user: []any{testUser}, display: []any{"c1", "c1"}},
-		"no display session": {user: []any{testUser}, display: []any{"", dbus.ObjectPath("/")}},
+		"no display session": {user: []any{testUser}, display: []any{"", objectPath("/")}},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			b := newMockbus(t)
 			b.EXPECT().call(mock.Anything, testOwner, managerPath, managerInterface+".GetUser", []any{uint32(os.Getuid())}).Return(tc.user, nil).Once()
 			if tc.display != nil {
-				b.EXPECT().call(mock.Anything, testOwner, testUser, "org.freedesktop.DBus.Properties.Get", []any{userInterface, "Display"}).Return([]any{dbus.MakeVariant(tc.display)}, nil).Once()
+				b.EXPECT().call(mock.Anything, testOwner, testUser, "org.freedesktop.DBus.Properties.Get", []any{userInterface, "Display"}).Return([]any{makeVariant(tc.display)}, nil).Once()
 			}
 			a := newAdapter(b, ports.SystemRequirements{Session: true})
 			a.owner = testOwner
@@ -210,16 +210,16 @@ func TestProbeRejectsOtherUID(t *testing.T) {
 }
 func TestSignalFilteringAndUnlockNotAuthority(t *testing.T) {
 	cases := []struct {
-		sig   *dbus.Signal
+		sig   *signal
 		valid bool
 	}{
-		{&dbus.Signal{Sender: testOwner, Path: testSession, Name: sessionInterface + ".Lock"}, true},
-		{&dbus.Signal{Sender: testOwner, Path: testSession, Name: sessionInterface + ".Unlock"}, true},
-		{&dbus.Signal{Sender: testOwner, Path: managerPath, Name: managerInterface + ".PrepareForSleep", Body: []any{true}}, true},
-		{&dbus.Signal{Sender: ":1.99", Path: testSession, Name: sessionInterface + ".Lock"}, false},
-		{&dbus.Signal{Sender: testOwner, Path: "/org/freedesktop/login1/session/other", Name: sessionInterface + ".Unlock"}, false},
-		{&dbus.Signal{Sender: testOwner, Path: managerPath, Name: managerInterface + ".PrepareForSleep", Body: []any{"true"}}, false},
-		{&dbus.Signal{Sender: testOwner, Path: testSession, Name: sessionInterface + ".Lock", Body: []any{true}}, false},
+		{&signal{Sender: testOwner, Path: testSession, Name: sessionInterface + ".Lock"}, true},
+		{&signal{Sender: testOwner, Path: testSession, Name: sessionInterface + ".Unlock"}, true},
+		{&signal{Sender: testOwner, Path: managerPath, Name: managerInterface + ".PrepareForSleep", Body: []any{true}}, true},
+		{&signal{Sender: ":1.99", Path: testSession, Name: sessionInterface + ".Lock"}, false},
+		{&signal{Sender: testOwner, Path: "/org/freedesktop/login1/session/other", Name: sessionInterface + ".Unlock"}, false},
+		{&signal{Sender: testOwner, Path: managerPath, Name: managerInterface + ".PrepareForSleep", Body: []any{"true"}}, false},
+		{&signal{Sender: testOwner, Path: testSession, Name: sessionInterface + ".Lock", Body: []any{true}}, false},
 	}
 	for _, tc := range cases {
 		event, ok := parseSignal(tc.sig, testOwner, testSession)
@@ -233,7 +233,7 @@ func TestSignalFilteringAndUnlockNotAuthority(t *testing.T) {
 		}
 	}
 }
-func TestInhibitorOwnsCloexecDuplicateAndClosesOnce(t *testing.T) {
+func TestInhibitorOwnsTransferredFileAndClosesOnce(t *testing.T) {
 	b := newMockbus(t)
 	r, w, err := os.Pipe()
 	if err != nil {
@@ -241,20 +241,15 @@ func TestInhibitorOwnsCloexecDuplicateAndClosesOnce(t *testing.T) {
 	}
 	defer r.Close()
 	defer w.Close()
-	received, err := unix.Dup(int(r.Fd()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	b.EXPECT().call(mock.Anything, testOwner, managerPath, managerInterface+".Inhibit", []any{"sleep", "neferafk", "session protection", "delay"}).Return([]any{dbus.UnixFD(received)}, nil).Once()
+	received := r
+	b.EXPECT().call(mock.Anything, testOwner, managerPath, managerInterface+".Inhibit", []any{"sleep", "neferafk", "session protection", "delay"}).Return([]any{received}, nil).Once()
 	b.EXPECT().close().Return(nil).Once()
 	a := newAdapter(b, ports.SystemRequirements{Sleep: true})
 	a.owner = testOwner
 	if err := a.inhibit(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := unix.FcntlInt(uintptr(received), unix.F_GETFD, 0); !errors.Is(err, unix.EBADF) {
-		t.Fatalf("received FD not closed: %v", err)
-	}
+
 	held := a.inhibitor
 	flags, err := unix.FcntlInt(held.Fd(), unix.F_GETFD, 0)
 	if err != nil || flags&unix.FD_CLOEXEC == 0 {
@@ -289,26 +284,23 @@ func TestRunMatchingSleepCycleAndSuspendFalse(t *testing.T) {
 	}
 	defer r.Close()
 	defer w.Close()
-	received, err := unix.Dup(int(r.Fd()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	b.EXPECT().call(mock.Anything, testOwner, managerPath, managerInterface+".Inhibit", []any{"sleep", "neferafk", "session protection", "delay"}).Return([]any{dbus.UnixFD(received)}, nil).Once()
+	received := r
+	b.EXPECT().call(mock.Anything, testOwner, managerPath, managerInterface+".Inhibit", []any{"sleep", "neferafk", "session protection", "delay"}).Return([]any{received}, nil).Once()
 	suspended := make(chan struct{})
-	b.EXPECT().call(mock.Anything, testOwner, managerPath, "org.freedesktop.DBus.Properties.Get", []any{managerInterface, "BlockInhibited"}).Return([]any{dbus.MakeVariant("")}, nil).Once()
-	b.EXPECT().suspend(mock.Anything, testOwner).RunAndReturn(func(ctx context.Context, _ string) <-chan *dbus.Call {
+	b.EXPECT().call(mock.Anything, testOwner, managerPath, "org.freedesktop.DBus.Properties.Get", []any{managerInterface, "BlockInhibited"}).Return([]any{makeVariant("")}, nil).Once()
+	b.EXPECT().suspend(mock.Anything, testOwner).RunAndReturn(func(ctx context.Context, _ string) <-chan *suspendResult {
 		if _, ok := ctx.Deadline(); !ok {
 			t.Error("unbounded suspend call")
 		}
 		close(suspended)
-		return make(chan *dbus.Call, 1) // reply held: owner must still process SleepReady
+		return make(chan *suspendResult, 1) // reply held: owner must still process SleepReady
 	}).Once()
 	commands := make(chan ports.SystemCommand)
 	events := make(chan ports.SystemEvent, 8)
 	done := make(chan error, 1)
 	go func() { done <- a.Run(context.Background(), commands, events) }()
 	<-events // capability report synchronizes initial inhibitor ownership
-	a.signals <- &dbus.Signal{Sender: testOwner, Path: managerPath, Name: managerInterface + ".PrepareForSleep", Body: []any{true}}
+	a.signals <- &signal{Sender: testOwner, Path: managerPath, Name: managerInterface + ".PrepareForSleep", Body: []any{true}}
 	prep := (<-events).(ports.SleepPreparation)
 	if prep.Cycle != 1 || prep.MaxDelay != 5*time.Second || prep.ReceivedAt.IsZero() {
 		t.Fatalf("sleep prep %+v", prep)
@@ -353,7 +345,7 @@ func TestSuspendBlockedAndUnavailableNeverCallsSuspend(t *testing.T) {
 			b.EXPECT().unixFDs().Return(false).Once()
 			b.EXPECT().close().Return(nil).Once()
 			if blocked {
-				b.EXPECT().call(mock.Anything, testOwner, managerPath, "org.freedesktop.DBus.Properties.Get", []any{managerInterface, "BlockInhibited"}).Return([]any{dbus.MakeVariant("sleep:shutdown")}, nil).Once()
+				b.EXPECT().call(mock.Anything, testOwner, managerPath, "org.freedesktop.DBus.Properties.Get", []any{managerInterface, "BlockInhibited"}).Return([]any{makeVariant("sleep:shutdown")}, nil).Once()
 			}
 			commands := make(chan ports.SystemCommand, 1)
 			events := make(chan ports.SystemEvent, 3)
