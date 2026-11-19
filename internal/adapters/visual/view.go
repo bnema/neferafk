@@ -119,12 +119,12 @@ func barCSS(s lockState, p promptKind) string {
 		barH, barGap, fieldMargin(w), white, bg)
 }
 
-// lockedText is the lock-time line, blank until the lock is confirmed.
-func lockedText(at time.Time) string {
-	if at.IsZero() {
+// lockedText is the lock-time line, blank unless Ctrl reveals it.
+func lockedText(s lockState) string {
+	if !s.Ctrl || s.LockedAt.IsZero() {
 		return " "
 	}
-	return at.Format(lockedLayout)
+	return s.LockedAt.Format(lockedLayout)
 }
 
 const powerHelpText = "F1 sleep  F2 reboot  F3 off"
@@ -174,7 +174,7 @@ func maskFor(s lockState, p promptKind) (string, string) {
 func UnlockBox(root nefergui.Node, s lockState, p promptKind, now time.Time) {
 	frame := root.Column(nefergui.Class("frame"), nefergui.Inline(cssFrame))
 	frame.Text(now.Format(clockLayout), nefergui.Key("clock"), nefergui.Inline(cssClock))
-	frame.Text(lockedText(s.LockedAt), nefergui.Key("locked"), nefergui.Inline(cssLocked))
+	frame.Text(lockedText(s), nefergui.Key("locked"), nefergui.Inline(cssLocked))
 	box := frame.Column(nefergui.Class("box"), nefergui.Key("box"), nefergui.Inline(cssBox))
 	box.Spacer(nefergui.Key("hint-balance"), nefergui.Inline(cssHintBalance))
 	mask, css := maskFor(s, p)

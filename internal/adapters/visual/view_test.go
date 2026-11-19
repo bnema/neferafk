@@ -113,9 +113,11 @@ func TestBarShowsHoldThenCaps(t *testing.T) {
 	require.Contains(t, css, "background-color:#ffffff")
 }
 
-func TestLockTimeShowsOnlyOnceLocked(t *testing.T) {
-	require.Equal(t, " ", lockedText(time.Time{}))
-	require.Equal(t, "locked 09:07", lockedText(time.Date(2026, 1, 2, 9, 7, 0, 0, time.Local)))
+func TestLockTimeShowsOnlyWhileCtrlIsHeld(t *testing.T) {
+	at := time.Date(2026, 1, 2, 9, 7, 0, 0, time.Local)
+	require.Equal(t, " ", lockedText(lockState{Ctrl: true}), "not locked yet")
+	require.Equal(t, " ", lockedText(lockState{LockedAt: at}), "Ctrl not held")
+	require.Equal(t, "locked 09:07", lockedText(lockState{LockedAt: at, Ctrl: true}))
 }
 
 // The spacers mirror the rows around the field so it stays centered.
