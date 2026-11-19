@@ -95,7 +95,7 @@ func TestBarShowsHoldThenCaps(t *testing.T) {
 	}
 	require.Contains(t, barCSS(lockState{}, promptPassword), "background-color:transparent")
 	css := barCSS(lockState{Caps: true}, promptPIN)
-	require.Contains(t, css, "height:1px")
+	require.Contains(t, css, "height:1px;min-height:0") // the UA sheet gives spacers min-height:8px
 	require.Contains(t, css, fmt.Sprintf("width:%dpx", fieldOuter(pinW)))
 	require.Contains(t, css, fmt.Sprintf("margin-left:%dpx", fieldMargin(pinW)))
 	require.Contains(t, css, "background-color:#ffffff")
@@ -110,7 +110,7 @@ func TestLockTimeShowsOnlyOnceLocked(t *testing.T) {
 func TestBalancesMirrorAddedRows(t *testing.T) {
 	require.Equal(t, clockH+lockedH, balanceH)
 	require.Equal(t, barGap+barH+hintH, hintBalanceH)
-	require.Contains(t, barCSS(lockState{}, promptPassword), fmt.Sprintf("height:%dpx;margin-top:%dpx", barH, barGap))
+	require.Contains(t, barCSS(lockState{}, promptPassword), fmt.Sprintf("height:%dpx;min-height:0px;margin-top:%dpx", barH, barGap))
 }
 
 func TestMaskIsCappedToTheField(t *testing.T) {

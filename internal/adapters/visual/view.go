@@ -101,7 +101,8 @@ func barWidth(s lockState, w int) int {
 }
 
 // barCSS styles the indicator bar. Its box always takes the same space; only
-// the white width changes.
+// the white width changes. align-self keeps the box stretch from overriding
+// the width, and min-height lifts the 8px minimum NeferGUI gives spacers.
 func barCSS(s lockState, p promptKind) string {
 	w := passwordW
 	if p == promptPIN {
@@ -112,7 +113,7 @@ func barCSS(s lockState, p promptKind) string {
 	if white > 0 {
 		bg = "#ffffff"
 	}
-	return fmt.Sprintf("height:%dpx;margin-top:%dpx;margin-left:%dpx;width:%dpx;background-color:%s",
+	return fmt.Sprintf("align-self:flex-start;height:%dpx;min-height:0px;margin-top:%dpx;margin-left:%dpx;width:%dpx;background-color:%s",
 		barH, barGap, fieldMargin(w), white, bg)
 }
 
