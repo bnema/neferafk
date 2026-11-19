@@ -72,6 +72,7 @@ auth.mode = password
 | `fade.duration` | duration | `2s` |
 | `lock.after` | duration or `off` | `5m` |
 | `lock.output` | output name (e.g. `DP-2`) | none |
+| `lock.power-actions` | `on` or `off` | `off` |
 | `screens.off-after` | duration or `off` | `7m` |
 | `sleep.after` | duration or `off` | `20m` |
 | `auth.mode` | `password` or `pin` | `password` |
@@ -82,6 +83,10 @@ auth.mode = password
 Durations use Go syntax (`30s`, `5m`, `1h`), up to 24h. The order of the actions comes from their delays: for example, `lock.after = 20s` with `screens.off-after = 50s` turns the screens off 30 seconds after the lock. A screen that connects while the screens are off, such as a display that reconnects from deep sleep, is turned off too.
 
 The lock prompt shows on every output. Set `lock.output` to show it only on that output while it is connected; the other outputs then show black. A change applies from the next lock. `wlr-randr` lists the output names.
+
+The lock screen shows the date, the time the lock started, and the number of rejected attempts. A thin line under the input is lit while Caps Lock is on.
+
+With `lock.power-actions = on`, the lock screen accepts power shortcuts without authentication: `Ctrl+F1` suspends, and holding `Ctrl+F2` (reboot) or `Ctrl+F3` (power off) for one second fills the line under the input and then runs the action. Releasing early cancels. logind must allow the action without an interactive prompt; the daemon logs a warning otherwise. Enabling it applies from the next lock.
 
 PIN mode compares a 6 to 32 digit PIN read from the daemon's environment or from `pass show ENTRY`. If the PIN source is unavailable or invalid, the lock asks for the password through PAM.
 

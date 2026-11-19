@@ -13,6 +13,10 @@ sleep.after = 20m
 # every output shows the prompt.
 # lock.output = DP-2
 
+# Lock-screen shortcuts without authentication: Ctrl+F1 suspends, holding
+# Ctrl+F2 reboots and holding Ctrl+F3 powers off.
+# lock.power-actions = on
+
 # password (PAM service /etc/pam.d/neferafk) or pin.
 auth.mode = password
 # PIN mode: 6 to 32 digits from `pass show ENTRY` (or auth.pin-source = env
