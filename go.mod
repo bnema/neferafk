@@ -5,7 +5,7 @@ go 1.27
 require (
 	bnema.dev/go-wayland-bindings v0.2.0
 	bnema.dev/kvconf v0.2.0
-	bnema.dev/neferclient v0.5.1
+	bnema.dev/neferclient v0.5.2
 	bnema.dev/nefergui v0.8.0
 	bnema.dev/purego-pam v0.2.0
 	bnema.dev/wlturbo v0.7.0
