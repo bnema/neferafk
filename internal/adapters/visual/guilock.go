@@ -156,18 +156,19 @@ func (guiLocker) RunLock(ctx context.Context, cfg lockConfig) (err error) {
 type locker struct {
 	*screens
 
-	cfg     lockConfig
-	lock    *neferclient.Lock
-	seat    *neferclient.Seat
-	secret  *neferclient.SecretBuffer
-	bound   bool            // Output is covered: only it shows the lock content
-	initial map[uint32]bool // outputs present at acquisition: their failures abort
-	status  lockStatus
-	fails   int       // rejected submissions shown as lockState.Failures
-	at      time.Time // lock confirmation, shown as lockState.LockedAt
-	unlock  bool      // requested; honoured once locked
-	power   powerHold // Ctrl+F power shortcuts
-	caps    bool      // Caps Lock is on, shown as lockState.Caps
+	cfg       lockConfig
+	lock      *neferclient.Lock
+	seat      *neferclient.Seat
+	secret    *neferclient.SecretBuffer
+	bound     bool            // Output is covered: only it shows the lock content
+	initial   map[uint32]bool // outputs present at acquisition: their failures abort
+	status    lockStatus
+	fails     int       // rejected submissions shown as lockState.Failures
+	attempted bool      // a submission awaits its result
+	at        time.Time // lock confirmation, shown as lockState.LockedAt
+	unlock    bool      // requested; honoured once locked
+	power     powerHold // Ctrl+F power shortcuts
+	caps      bool      // Caps Lock is on, shown as lockState.Caps
 }
 
 // wait blocks for one event and applies it.
@@ -246,12 +247,19 @@ func (l *locker) state(now time.Time) lockState {
 		Caps: l.caps, Hold: l.power.progress(now)}
 }
 
-// setStatus applies st and counts rejections of a submitted attempt: a
-// failure that follows lockBusy. A worker loss or launch failure outside an
-// attempt is not counted.
+// setStatus applies st and counts the first failure after a submission. The
+// status channel keeps only the latest value, so lockBusy may never be seen:
+// the submission itself marks the attempt. A failure without a submission
+// (worker loss, launch failure) is not counted.
 func (l *locker) setStatus(st lockStatus) {
-	if st == lockFailed && l.status == lockBusy {
-		l.fails++
+	switch st {
+	case lockFailed:
+		if l.attempted {
+			l.fails++
+		}
+		l.attempted = false
+	case lockIdle:
+		l.attempted = false
 	}
 	l.status = st
 }
@@ -369,7 +377,7 @@ func (l *locker) Key(ev *neferclient.KeyEvent) {
 				l.setStatus(lockFailed)
 			}
 		default:
-			l.cfg.OnSubmit(l.secret.Bytes())
+			l.submit()
 		}
 	case ev.Keysym == keysymEscape, (ev.Keysym == keysymU || ev.Keysym == keysymUpperU) && ev.Modifiers&neferclient.ModCtrl != 0:
 		l.clearSecret()
@@ -398,6 +406,13 @@ func (l *locker) KeyboardFocus(_ neferclient.SurfaceID, focused bool) {
 	if !focused && l.power.cancel() {
 		l.invalidateContent()
 	}
+}
+
+// submit hands the secret to OnSubmit and marks an attempt for the
+// failure counter.
+func (l *locker) submit() {
+	l.attempted = true
+	l.cfg.OnSubmit(l.secret.Bytes())
 }
 
 func (l *locker) clearSecret() {

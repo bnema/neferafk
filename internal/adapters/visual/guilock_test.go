@@ -65,14 +65,21 @@ func TestCapsLockReachesLockState(t *testing.T) {
 
 func TestFailuresCountOnlyRejectedAttempts(t *testing.T) {
 	l := boundLocker("", map[neferclient.SurfaceID]*screen{})
-	l.setStatus(lockFailed) // worker loss outside an attempt
+	l.secret = neferclient.NewSecretBuffer(lockSecretMax)
+	l.cfg.OnSubmit = func([]byte) {}
+	l.setStatus(lockFailed) // worker loss without a submission
 	require.Zero(t, l.fails)
+	l.submit()
+	l.setStatus(lockFailed) // fast rejection: lockBusy coalesced away
+	require.Equal(t, 1, l.fails)
+	l.setStatus(lockFailed) // no new submission
+	require.Equal(t, 1, l.fails)
+	l.submit()
 	l.setStatus(lockBusy)
 	l.setStatus(lockFailed)
-	require.Equal(t, 1, l.fails)
-	l.setStatus(lockFailed) // repeated failure without a new attempt
-	require.Equal(t, 1, l.fails)
-	l.setStatus(lockBusy)
+	require.Equal(t, 2, l.fails)
+	l.submit()
+	l.setStatus(lockIdle) // the attempt ended without a rejection
 	l.setStatus(lockFailed)
 	require.Equal(t, 2, l.fails)
 }
