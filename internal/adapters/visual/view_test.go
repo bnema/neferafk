@@ -1,6 +1,7 @@
 package visual
 
 import (
+	"fmt"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -69,10 +70,47 @@ func TestHintsShowStatusThenPromptNotesAndFitTheBox(t *testing.T) {
 		{lockIdle, promptPassword, " "},
 		{lockIdle, promptPIN, " "},
 	} {
-		got := hintFor(tc.s, tc.p)
+		got := hintFor(lockState{Status: tc.s, Failures: 1}, tc.p)
 		require.Equal(t, tc.want, got)
 		require.LessOrEqual(t, utf8.RuneCountInString(got), maxHintRunes, got)
 	}
+}
+
+func TestDeniedCountsRepeatedFailures(t *testing.T) {
+	require.Equal(t, "Denied", hintFor(lockState{Status: lockFailed}, promptPassword))
+	require.Equal(t, "Denied", hintFor(lockState{Status: lockFailed, Failures: 1}, promptPassword))
+	got := hintFor(lockState{Status: lockFailed, Failures: 3}, promptPIN)
+	require.Equal(t, "Denied ×3", got)
+	require.LessOrEqual(t, utf8.RuneCountInString(got), maxHintRunes)
+	require.Equal(t, " ", hintFor(lockState{Status: lockIdle, Failures: 3}, promptPassword))
+}
+
+func TestBarShowsHoldThenCaps(t *testing.T) {
+	for _, w := range []int{passwordW, pinW} {
+		outer := fieldOuter(w)
+		require.Equal(t, 0, barWidth(lockState{}, w))
+		require.Equal(t, outer, barWidth(lockState{Caps: true}, w))
+		require.Equal(t, outer/2, barWidth(lockState{Caps: true, Hold: 0.5}, w), "hold wins over caps")
+		require.Equal(t, outer, barWidth(lockState{Hold: 1.5}, w))
+	}
+	require.Contains(t, barCSS(lockState{}, promptPassword), "background-color:transparent")
+	css := barCSS(lockState{Caps: true}, promptPIN)
+	require.Contains(t, css, "height:1px")
+	require.Contains(t, css, fmt.Sprintf("width:%dpx", fieldOuter(pinW)))
+	require.Contains(t, css, fmt.Sprintf("margin-left:%dpx", fieldMargin(pinW)))
+	require.Contains(t, css, "background-color:#ffffff")
+}
+
+func TestLockTimeShowsOnlyOnceLocked(t *testing.T) {
+	require.Equal(t, " ", lockedText(time.Time{}))
+	require.Equal(t, "locked 09:07", lockedText(time.Date(2026, 1, 2, 9, 7, 0, 0, time.Local)))
+}
+
+// The spacers mirror the rows around the field so it stays centered.
+func TestBalancesMirrorAddedRows(t *testing.T) {
+	require.Equal(t, "height:46px;margin-top:8px", cssBalance)         // clock 24 + locked 22, gap 8
+	require.Equal(t, "margin-bottom:12px;height:27px", cssHintBalance) // hint 22 + bar gap 4 + 1
+	require.Equal(t, 4, barGap)
 }
 
 func TestMaskIsCappedToTheField(t *testing.T) {

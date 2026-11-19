@@ -2,6 +2,7 @@ package visual
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -9,10 +10,12 @@ import (
 )
 
 // Lock look: black screen, one monospace box with a grey border. The masked
-// input sits at the exact screen center: the date line above the box and an
-// equal-height spacer below it balance each other, and an empty spacer inside
-// the box balances the status line under the input. The view sees only the
-// typed-character count, never the secret.
+// input sits at the exact screen center: the date and lock-time lines above
+// the box and an equal-height spacer below it balance each other, and an
+// empty spacer inside the box balances the indicator bar and status line
+// under the input. The indicator bar is a 1px line under the field, always
+// laid out: a hold progress fill, or full white while Caps Lock is on. The
+// view sees only the typed-character count, never the secret.
 //
 // NeferGUI's flex layout does not center a fixed-width child across the
 // column here, so each field gets an explicit left margin derived from the
@@ -38,14 +41,18 @@ const (
 
 	cssScreen = "display:flex;flex-direction:column;align-items:center;justify-content:center;" +
 		"width:100%;height:100%;background-color:#000000;color:#ffffff;font-family:monospace;font-size:18px"
-	cssClock = "color:#ffffff;text-align:right;height:24px;margin-bottom:8px"
-	// cssBalance mirrors cssClock below the box.
-	cssBalance = "height:24px;margin-top:8px"
-	// cssHint and cssHintBalance have the same outer height.
+	cssClock  = "color:#ffffff;text-align:right;height:24px"
+	cssLocked = "color:rgba(255,255,255,0.5);text-align:right;height:22px;margin-bottom:8px"
+	// cssBalance mirrors cssClock and cssLocked below the box.
+	cssBalance = "height:46px;margin-top:8px"
+	// cssHintBalance has the outer height of the bar (4px gap + 1px) plus
+	// cssHint.
 	cssHint        = "color:#ffffff;margin-top:12px;height:22px;text-align:center"
-	cssHintBalance = "margin-bottom:12px;height:22px"
+	cssHintBalance = "margin-bottom:12px;height:27px"
+	barGap         = 4
 
-	clockLayout = "Mon 02 Jan 2006  15:04"
+	clockLayout  = "Mon 02 Jan 2006  15:04"
+	lockedLayout = "locked 15:04"
 )
 
 var (
@@ -64,16 +71,60 @@ var (
 
 // fieldMargin centers a field of content width w inside the box content.
 func fieldMargin(w int) int {
-	return (boxContentW - (w + 2*fieldPadX + fieldEdge)) / 2
+	return (boxContentW - fieldOuter(w)) / 2
+}
+
+// fieldOuter is the outer width of a field of content width w.
+func fieldOuter(w int) int { return w + 2*fieldPadX + fieldEdge }
+
+// barWidth is the white part of the indicator bar under a field of content
+// width w: the hold progress first, else the whole field while Caps Lock is
+// on, else nothing.
+func barWidth(s lockState, w int) int {
+	outer := fieldOuter(w)
+	switch {
+	case s.Hold > 0:
+		return int(math.Round(min(s.Hold, 1) * float64(outer)))
+	case s.Caps:
+		return outer
+	}
+	return 0
+}
+
+// barCSS styles the indicator bar. Its box always takes the same space; only
+// the white width changes.
+func barCSS(s lockState, p promptKind) string {
+	w := passwordW
+	if p == promptPIN {
+		w = pinW
+	}
+	white := barWidth(s, w)
+	bg := "transparent"
+	if white > 0 {
+		bg = "#ffffff"
+	}
+	return fmt.Sprintf("height:1px;margin-top:%dpx;margin-left:%dpx;width:%dpx;background-color:%s",
+		barGap, fieldMargin(w), white, bg)
+}
+
+// lockedText is the lock-time line, blank until the lock is confirmed.
+func lockedText(at time.Time) string {
+	if at.IsZero() {
+		return " "
+	}
+	return at.Format(lockedLayout)
 }
 
 // hintFor is the line under the input: the attempt status first, then a note
 // for prompts the bare field cannot convey. It never carries typed input.
-func hintFor(s lockStatus, p promptKind) string {
-	switch s {
+func hintFor(s lockState, p promptKind) string {
+	switch s.Status {
 	case lockBusy:
 		return "..."
 	case lockFailed:
+		if s.Failures > 1 {
+			return fmt.Sprintf("Denied ×%d", s.Failures)
+		}
 		return "Denied"
 	}
 	switch p {
@@ -100,11 +151,13 @@ func maskFor(s lockState, p promptKind) (string, string) {
 func UnlockBox(root nefergui.Node, s lockState, p promptKind, now time.Time) {
 	frame := root.Column(nefergui.Class("frame"), nefergui.Inline(cssFrame))
 	frame.Text(now.Format(clockLayout), nefergui.Key("clock"), nefergui.Inline(cssClock))
+	frame.Text(lockedText(s.LockedAt), nefergui.Key("locked"), nefergui.Inline(cssLocked))
 	box := frame.Column(nefergui.Class("box"), nefergui.Key("box"), nefergui.Inline(cssBox))
 	box.Spacer(nefergui.Key("hint-balance"), nefergui.Inline(cssHintBalance))
 	mask, css := maskFor(s, p)
 	box.Text(mask, nefergui.Key("mask"), nefergui.Inline(css))
-	box.Text(hintFor(s.Status, p), nefergui.Key("hint"), nefergui.Inline(cssHint))
+	box.Spacer(nefergui.Key("bar"), nefergui.Inline(barCSS(s, p)))
+	box.Text(hintFor(s, p), nefergui.Key("hint"), nefergui.Inline(cssHint))
 	frame.Spacer(nefergui.Key("balance"), nefergui.Inline(cssBalance))
 }
 

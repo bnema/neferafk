@@ -31,6 +31,11 @@ const (
 type lockState struct {
 	Mask   int        // typed code points, for a mask of that many dots
 	Status lockStatus // latest value received on lockConfig.Status
+	Caps   bool       // Caps Lock is on
+	Hold   float64    // hold-to-confirm progress in (0,1]; 0 when not held
+
+	Failures int       // rejected attempts since this lock started
+	LockedAt time.Time // when the compositor confirmed the lock; zero before
 }
 
 // lockConfig wires the session lock to its caller. Every callback runs on the
@@ -149,7 +154,9 @@ type locker struct {
 	bound   bool            // Output is covered: only it shows the lock content
 	initial map[uint32]bool // outputs present at acquisition: their failures abort
 	status  lockStatus
-	unlock  bool // requested; honoured once locked
+	fails   int       // rejected attempts shown as lockState.Failures
+	at      time.Time // lock confirmation, shown as lockState.LockedAt
+	unlock  bool      // requested; honoured once locked
 }
 
 // wait blocks for one event and applies it.
@@ -169,7 +176,7 @@ func (l *locker) wait(ctx context.Context, retry <-chan time.Time) error {
 		}
 	case st, ok := <-l.cfg.Status:
 		if ok {
-			l.status = st
+			l.setStatus(st)
 			l.invalidateContent()
 		} else {
 			l.cfg.Status = nil
@@ -216,7 +223,15 @@ func (l *locker) view(f *nefergui.Frame, s *screen) {
 		f.Root(nefergui.Inline(cssBlack))
 		return
 	}
-	l.cfg.View(f, lockState{Mask: l.secret.Len(), Status: l.status})
+	l.cfg.View(f, lockState{Mask: l.secret.Len(), Status: l.status, Failures: l.fails, LockedAt: l.at})
+}
+
+// setStatus applies st and counts each rejection.
+func (l *locker) setStatus(st lockStatus) {
+	if st == lockFailed {
+		l.fails++
+	}
+	l.status = st
 }
 
 // shows reports whether s shows the lock content.
@@ -294,6 +309,7 @@ func (l *locker) Locked() {
 	if l.err != nil {
 		return
 	}
+	l.at = time.Now()
 	l.invalidateContent()
 	if l.cfg.OnLocked != nil {
 		l.cfg.OnLocked()
@@ -321,7 +337,7 @@ func (l *locker) Key(ev *neferclient.KeyEvent) {
 		case !l.lock.Locked() || l.cfg.OnSubmit == nil || l.secret.Len() == 0:
 		case len(l.secret.Bytes()) > ports.AuthMaxSecret:
 			if l.status != lockBusy { // an attempt still running keeps its status
-				l.status = lockFailed // too long to verify: refused like a wrong secret
+				l.setStatus(lockFailed) // too long to verify: refused like a wrong secret
 			}
 		default:
 			l.cfg.OnSubmit(l.secret.Bytes())
