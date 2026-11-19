@@ -1,7 +1,8 @@
 # NeferAFK configuration: copy to ~/.config/neferafk/config.
 # Delays count from the last input. `off` disables an action.
-# Changes apply live, except enabling screens off, or enabling lock or sleep
-# when both were off at startup: those need a daemon restart.
+# Changes apply live, except enabling screens off, enabling lock or sleep
+# when both were off at startup, or enabling lock.power-actions when it was off
+# at startup: those need a daemon restart.
 
 fade.after = 6m
 fade.duration = 2s
@@ -14,7 +15,8 @@ sleep.after = 20m
 # lock.output = DP-2
 
 # Lock-screen shortcuts without authentication: Ctrl+F1 suspends, holding
-# Ctrl+F2 reboots and holding Ctrl+F3 powers off.
+# Ctrl+F2 reboots and holding Ctrl+F3 powers off. Turning it on applies from
+# the next lock; turning it off applies at once.
 # lock.power-actions = on
 
 # password (PAM service /etc/pam.d/neferafk) or pin.
