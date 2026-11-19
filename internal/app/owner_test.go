@@ -791,7 +791,7 @@ func TestLockCarriesPowerActionsAndPowerRequestsAreGated(t *testing.T) {
 	h.visEv <- ports.PowerRequested{Generation: l.Generation + 1, Action: ports.PowerReboot}
 	h.visEv <- ports.PowerRequested{Generation: l.Generation, Action: 9}
 	h.noPowerCommand()
-	for action, want := range map[ports.PowerAction]ports.SystemCommand{ports.PowerSuspend: ports.SystemSuspend{}, ports.PowerReboot: ports.SystemReboot{}, ports.PowerOff: ports.SystemPowerOff{}} {
+	for action, want := range map[ports.PowerAction]ports.SystemCommand{ports.PowerSuspend: ports.SystemSuspend{LockScreen: true}, ports.PowerReboot: ports.SystemReboot{}, ports.PowerOff: ports.SystemPowerOff{}} {
 		h.visEv <- ports.PowerRequested{Generation: l.Generation, Action: action}
 		if got := h.powerCommand(); got != want {
 			t.Fatalf("action %d sent %#v", action, got)

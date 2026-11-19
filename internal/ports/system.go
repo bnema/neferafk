@@ -44,7 +44,11 @@ type SystemCommand interface{ systemCommand() }
 
 // SystemSleepReady releases only the inhibitor for this preparation cycle.
 type SystemSleepReady struct{ Cycle uint64 }
-type SystemSuspend struct{}
+
+// SystemSuspend asks for a non-interactive suspend. LockScreen marks a
+// daemon-validated lock screen power action; without it the request is the
+// idle policy's and needs sleep support (delay inhibitor, before-sleep lock).
+type SystemSuspend struct{ LockScreen bool }
 
 // SystemReboot and SystemPowerOff are non-interactive logind requests, sent
 // only for a daemon-validated lock screen power action.

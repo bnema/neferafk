@@ -120,11 +120,13 @@ func TestPowerActionsRefusedWithoutCallingLogind(t *testing.T) {
 		cmd     ports.SystemCommand
 		wantOp  string
 	}{
-		"reboot not required":     {ports.SystemRequirements{Sleep: true}, true, "", ports.SystemReboot{}, "reboot"},
-		"poweroff unauthorized":   {ports.SystemRequirements{Power: true}, false, "", ports.SystemPowerOff{}, "poweroff"},
-		"reboot shutdown block":   {ports.SystemRequirements{Power: true}, true, "sleep:shutdown", ports.SystemReboot{}, "reboot"},
-		"poweroff shutdown block": {ports.SystemRequirements{Power: true}, true, "shutdown", ports.SystemPowerOff{}, "poweroff"},
-		"suspend not required":    {ports.SystemRequirements{Session: true}, true, "", ports.SystemSuspend{}, "suspend"},
+		"reboot not required":                       {ports.SystemRequirements{Sleep: true}, true, "", ports.SystemReboot{}, "reboot"},
+		"poweroff unauthorized":                     {ports.SystemRequirements{Power: true}, false, "", ports.SystemPowerOff{}, "poweroff"},
+		"reboot shutdown block":                     {ports.SystemRequirements{Power: true}, true, "sleep:shutdown", ports.SystemReboot{}, "reboot"},
+		"poweroff shutdown block":                   {ports.SystemRequirements{Power: true}, true, "shutdown", ports.SystemPowerOff{}, "poweroff"},
+		"suspend not required":                      {ports.SystemRequirements{Session: true}, true, "", ports.SystemSuspend{LockScreen: true}, "suspend"},
+		"policy suspend with Power only is refused": {ports.SystemRequirements{Power: true}, true, "", ports.SystemSuspend{}, "suspend"},
+		"lock-screen suspend needs Power":           {ports.SystemRequirements{Sleep: true}, true, "", ports.SystemSuspend{LockScreen: true}, "suspend"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
@@ -190,7 +192,7 @@ func TestPowerOnlySuspendAndSuccessClearsPending(t *testing.T) {
 			return make(chan *actionResult, 1)
 		}).Once()
 		events, commands, done := runPower(t, a, b)
-		commands <- ports.SystemSuspend{}
+		commands <- ports.SystemSuspend{LockScreen: true} // lock-screen suspend with Power only is allowed
 		<-first
 		synctest.Wait() // Run consumed the success reply and freed the slot
 		commands <- ports.SystemReboot{}

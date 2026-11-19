@@ -550,7 +550,7 @@ func (o *Owner) power(v ports.PowerRequested) {
 	var cmd ports.SystemCommand
 	switch v.Action {
 	case ports.PowerSuspend:
-		cmd = ports.SystemSuspend{}
+		cmd = ports.SystemSuspend{LockScreen: true}
 	case ports.PowerReboot:
 		cmd = ports.SystemReboot{}
 	case ports.PowerOff:

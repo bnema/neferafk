@@ -428,8 +428,13 @@ func (a *Adapter) Run(ctx context.Context, commands <-chan ports.SystemCommand, 
 					a.release()
 				}
 			case ports.SystemSuspend, ports.SystemReboot, ports.SystemPowerOff:
-				op, method, inhibit, allowed := "suspend", "Suspend", "sleep", (a.requirements.Sleep || a.requirements.Power) && a.caps.Suspend
-				switch c.(type) {
+				op, method, inhibit, allowed := "suspend", "Suspend", "sleep", false
+				switch c := c.(type) {
+				case ports.SystemSuspend:
+					// A policy suspend needs the sleep inhibitor and its
+					// before-sleep lock; only the lock screen (already
+					// locked) may suspend with power-action support alone.
+					allowed = (c.LockScreen && a.requirements.Power || !c.LockScreen && a.requirements.Sleep) && a.caps.Suspend
 				case ports.SystemReboot:
 					op, method, inhibit, allowed = "reboot", "Reboot", "shutdown", a.requirements.Power && a.caps.Reboot
 				case ports.SystemPowerOff:
