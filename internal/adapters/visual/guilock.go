@@ -66,6 +66,11 @@ type lockConfig struct {
 	Status <-chan lockStatus
 	// Wake requests a redraw.
 	Wake <-chan struct{}
+	// PowerActions enables the power shortcuts once locked: Ctrl+F1
+	// suspends, a 1s hold of Ctrl+F2 reboots, of Ctrl+F3 powers off.
+	PowerActions bool
+	// OnPower requests a power action. It must not block.
+	OnPower func(ports.PowerAction)
 }
 
 // Keys handled outside the secret buffer (xkb keysyms).
@@ -103,6 +108,10 @@ func (guiLocker) RunLock(ctx context.Context, cfg lockConfig) (err error) {
 	l.screens = newScreens(conn)
 	l.screens.onSetup = l.setupPolicy
 	l.screens.onError = l.errorPolicy
+	if cfg.PowerActions {
+		l.power.fire = cfg.OnPower
+	}
+	defer l.power.cancel()
 	defer func() {
 		l.secret.Wipe()
 		err = errors.Join(err, conn.Close(), l.screens.closeAll())
@@ -157,6 +166,7 @@ type locker struct {
 	fails   int       // rejected attempts shown as lockState.Failures
 	at      time.Time // lock confirmation, shown as lockState.LockedAt
 	unlock  bool      // requested; honoured once locked
+	power   powerHold // Ctrl+F power shortcuts
 }
 
 // wait blocks for one event and applies it.
@@ -182,6 +192,9 @@ func (l *locker) wait(ctx context.Context, retry <-chan time.Time) error {
 			l.cfg.Status = nil
 		}
 	case <-l.cfg.Wake:
+		l.invalidateContent()
+	case <-l.power.tick():
+		l.power.advance(time.Now())
 		l.invalidateContent()
 	case <-retry:
 	}
@@ -223,7 +236,8 @@ func (l *locker) view(f *nefergui.Frame, s *screen) {
 		f.Root(nefergui.Inline(cssBlack))
 		return
 	}
-	l.cfg.View(f, lockState{Mask: l.secret.Len(), Status: l.status, Failures: l.fails, LockedAt: l.at})
+	l.cfg.View(f, lockState{Mask: l.secret.Len(), Status: l.status, Failures: l.fails, LockedAt: l.at,
+		Hold: l.power.progress(time.Now())})
 }
 
 // setStatus applies st and counts each rejection.
@@ -317,6 +331,7 @@ func (l *locker) Locked() {
 }
 
 func (l *locker) LockFinished() {
+	l.power.cancel()
 	l.fail(errors.Join(errLockFinished, l.lock.Close()))
 }
 
@@ -327,6 +342,9 @@ func (l *locker) SecretChanged(int) { l.invalidateContent() }
 // Key handles the keys that are not secret text: Enter submits, Escape and
 // Ctrl+U clear. Before locked, Enter only clears.
 func (l *locker) Key(ev *neferclient.KeyEvent) {
+	if l.lock != nil && l.power.keyEvent(ev, l.lock.Locked()) {
+		l.invalidateContent()
+	}
 	if ev.Secret || !ev.Pressed || ev.Repeat || l.lock == nil {
 		return
 	}
@@ -344,6 +362,14 @@ func (l *locker) Key(ev *neferclient.KeyEvent) {
 		}
 	case ev.Keysym == keysymEscape, (ev.Keysym == keysymU || ev.Keysym == keysymUpperU) && ev.Modifiers&neferclient.ModCtrl != 0:
 		l.clearSecret()
+	}
+}
+
+// KeyboardFocus cancels a power hold when the lock loses the keyboard.
+func (l *locker) KeyboardFocus(_ neferclient.SurfaceID, focused bool) {
+	if !focused && l.power.key != 0 {
+		l.power.cancel()
+		l.invalidateContent()
 	}
 }
 

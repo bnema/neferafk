@@ -69,6 +69,7 @@ type lockRun struct {
 	done     chan error    // RunLock result
 	authDone chan struct{} // auth controller stopped and worker killed
 	locked   chan struct{}
+	power    chan ports.PowerAction // OnPower requests, written out by run
 }
 
 func (s *session) readCommands(ctx context.Context, out chan<- cmdMsg) {
@@ -113,10 +114,11 @@ func (s *session) run(ctx context.Context) error {
 		var lockDone <-chan error
 		var lockedC <-chan struct{}
 		var fadeDone <-chan error
+		var powerC <-chan ports.PowerAction
 		sig := ctx.Done()
 		if lk != nil {
 			// A held lock ignores termination requests: only unlock ends it.
-			lockDone, lockedC, sig = lk.done, lk.locked, nil
+			lockDone, lockedC, powerC, sig = lk.done, lk.locked, lk.power, nil
 		}
 		if fd != nil {
 			fadeDone = fd.done
@@ -164,6 +166,10 @@ func (s *session) run(ctx context.Context) error {
 				s.log.Warn().Err(err).Msg("lock confirmation not delivered")
 			}
 			stopFade()
+		case a := <-powerC:
+			if err := visualproc.WriteEvent(s.events, ports.PowerRequested{Generation: lk.gen, Action: a}); err != nil {
+				s.log.Warn().Err(err).Msg("power request not delivered")
+			}
 		case err := <-fadeDone:
 			fd = nil
 			if err != nil && !errors.Is(err, context.Canceled) {
@@ -217,11 +223,19 @@ func (s *session) startLock(ctx context.Context, c ports.VisualLock) *lockRun {
 	l := &lockRun{
 		gen: c.Generation, boot: c.Auth, ctl: ctl, cancel: cancel,
 		done: make(chan error, 1), authDone: make(chan struct{}), locked: make(chan struct{}, 1),
+		power: make(chan ports.PowerAction, 1),
 	}
 	go func() { defer close(l.authDone); ctl.run(lctx) }()
 	go clockWake(lctx.Done(), ctl.wake)
 	lcfg := newLockConfig(s.log, ctl, l.locked)
 	lcfg.Output = c.Output
+	lcfg.PowerActions = c.PowerActions
+	lcfg.OnPower = func(a ports.PowerAction) {
+		select {
+		case l.power <- a:
+		default: // one request is already pending
+		}
+	}
 	go func() { l.done <- s.locker.RunLock(lctx, lcfg) }()
 	return l
 }
