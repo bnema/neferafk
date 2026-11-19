@@ -152,6 +152,18 @@ func TestPowerHoldCancelsWhenCtrlLeavesModifiers(t *testing.T) {
 	})
 }
 
+func TestPowerHoldCancelsWhenAScreenGoesAway(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		h, fired := newHold()
+		l := &locker{screens: &screens{}, power: *h}
+		l.screens.onForget = l.screenGone
+		l.power.keyEvent(press(keysymF3, neferclient.ModCtrl), true)
+		l.screens.onForget() // what forget runs after closing a screen
+		require.Zero(t, l.power.key)
+		requireNeverFires(t, &l.power, fired)
+	})
+}
+
 func TestPowerHoldSwitchesAndIgnoresUnrelatedReleases(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		h, fired := newHold()

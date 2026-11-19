@@ -231,6 +231,9 @@ type screens struct {
 	// onError reports an event error (Handler.Error); it returns the error
 	// that ends the run, or nil to go on.
 	onError func(err error) error
+	// onForget, when set, runs after a screen was dropped and freed. Closing
+	// a surface resets the keys it held without a focus event.
+	onForget func()
 }
 
 func newScreens(conn *neferclient.Conn) *screens {
@@ -251,7 +254,11 @@ func (ss *screens) add(s *screen) { ss.byID[s.surf.ID()] = s }
 // forget drops a screen and frees it.
 func (ss *screens) forget(s *screen) error {
 	delete(ss.byID, s.surf.ID())
-	return s.close()
+	err := s.close()
+	if ss.onForget != nil {
+		ss.onForget()
+	}
+	return err
 }
 
 // Error applies onError to a failure while handling an event. Connection

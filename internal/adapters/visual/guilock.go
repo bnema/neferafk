@@ -108,6 +108,7 @@ func (guiLocker) RunLock(ctx context.Context, cfg lockConfig) (err error) {
 	l.screens = newScreens(conn)
 	l.screens.onSetup = l.setupPolicy
 	l.screens.onError = l.errorPolicy
+	l.screens.onForget = l.screenGone
 	if cfg.PowerActions {
 		l.power.fire = cfg.OnPower
 	}
@@ -397,6 +398,15 @@ func (l *locker) ModifiersChanged(mods neferclient.Modifiers) {
 		redraw = true
 	}
 	if redraw {
+		l.invalidateContent()
+	}
+}
+
+// screenGone cancels a power hold when a lock surface closes: neferclient
+// then drops the held keys without a release or focus event, so the held
+// F key would otherwise fire at the end of the hold.
+func (l *locker) screenGone() {
+	if l.power.cancel() {
 		l.invalidateContent()
 	}
 }
