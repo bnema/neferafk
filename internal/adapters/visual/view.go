@@ -41,21 +41,30 @@ const (
 
 	cssScreen = "display:flex;flex-direction:column;align-items:center;justify-content:center;" +
 		"width:100%;height:100%;background-color:#000000;color:#ffffff;font-family:monospace;font-size:18px"
-	cssClock  = "color:#ffffff;text-align:right;height:24px"
-	cssLocked = "color:rgba(255,255,255,0.5);text-align:right;height:22px;margin-bottom:8px"
-	// cssBalance mirrors cssClock and cssLocked below the box.
-	cssBalance = "height:46px;margin-top:8px"
-	// cssHintBalance has the outer height of the bar (4px gap + 1px) plus
-	// cssHint.
-	cssHint        = "color:#ffffff;margin-top:12px;height:22px;text-align:center"
-	cssHintBalance = "margin-bottom:12px;height:27px"
-	barGap         = 4
+	// Row heights around the field. The balances are written out: tests
+	// check they equal the rows they mirror.
+	clockH       = 24 // date line
+	lockedH      = 22 // lock-time line
+	boxGap       = 8  // between the lines above and the box
+	balanceH     = 46 // below the box: clockH + lockedH
+	barGap       = 4  // between the field and the bar
+	barH         = 1
+	hintGap      = 12 // between the bar and the hint
+	hintH        = 22
+	hintBalanceH = 27 // above the field: barGap + barH + hintH
 
 	clockLayout  = "Mon 02 Jan 2006  15:04"
 	lockedLayout = "locked 15:04"
 )
 
 var (
+	cssClock  = fmt.Sprintf("color:#ffffff;text-align:right;height:%dpx", clockH)
+	cssLocked = fmt.Sprintf("color:rgba(255,255,255,0.5);text-align:right;height:%dpx;margin-bottom:%dpx", lockedH, boxGap)
+	// cssBalance mirrors cssClock and cssLocked below the box.
+	cssBalance = fmt.Sprintf("height:%dpx;margin-top:%dpx", balanceH, boxGap)
+	// cssHintBalance mirrors the bar and cssHint above the field.
+	cssHint        = fmt.Sprintf("color:#ffffff;margin-top:%dpx;height:%dpx;text-align:center", hintGap, hintH)
+	cssHintBalance = fmt.Sprintf("margin-bottom:%dpx;height:%dpx", hintGap, hintBalanceH)
 	// cssRelief is the inverted relief: bottom and right edges at 50% white.
 	cssRelief = fmt.Sprintf("border-bottom:%[1]dpx solid rgba(255,255,255,0.5);"+
 		"border-right:%[1]dpx solid rgba(255,255,255,0.5)", fieldEdge)
@@ -103,8 +112,8 @@ func barCSS(s lockState, p promptKind) string {
 	if white > 0 {
 		bg = "#ffffff"
 	}
-	return fmt.Sprintf("height:1px;margin-top:%dpx;margin-left:%dpx;width:%dpx;background-color:%s",
-		barGap, fieldMargin(w), white, bg)
+	return fmt.Sprintf("height:%dpx;margin-top:%dpx;margin-left:%dpx;width:%dpx;background-color:%s",
+		barH, barGap, fieldMargin(w), white, bg)
 }
 
 // lockedText is the lock-time line, blank until the lock is confirmed.

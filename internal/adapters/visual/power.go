@@ -68,16 +68,19 @@ func (h *powerHold) keyEvent(ev *neferclient.KeyEvent, locked bool) (changed boo
 }
 
 func (h *powerHold) begin(key uint32, a ports.PowerAction) {
+	h.cancel() // never leak a running ticker
 	h.key, h.action, h.start = key, a, time.Now()
 	h.ticker = time.NewTicker(powerTick)
 }
 
-// cancel ends a hold without firing.
-func (h *powerHold) cancel() {
+// cancel ends a hold without firing and reports whether one was running.
+func (h *powerHold) cancel() bool {
+	running := h.key != 0
 	if h.ticker != nil {
 		h.ticker.Stop()
 	}
 	h.key, h.action, h.ticker = 0, 0, nil
+	return running
 }
 
 // tick is the redraw channel, nil when no hold runs.

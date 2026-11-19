@@ -108,9 +108,9 @@ func TestLockTimeShowsOnlyOnceLocked(t *testing.T) {
 
 // The spacers mirror the rows around the field so it stays centered.
 func TestBalancesMirrorAddedRows(t *testing.T) {
-	require.Equal(t, "height:46px;margin-top:8px", cssBalance)         // clock 24 + locked 22, gap 8
-	require.Equal(t, "margin-bottom:12px;height:27px", cssHintBalance) // hint 22 + bar gap 4 + 1
-	require.Equal(t, 4, barGap)
+	require.Equal(t, clockH+lockedH, balanceH)
+	require.Equal(t, barGap+barH+hintH, hintBalanceH)
+	require.Contains(t, barCSS(lockState{}, promptPassword), fmt.Sprintf("height:%dpx;margin-top:%dpx", barH, barGap))
 }
 
 func TestMaskIsCappedToTheField(t *testing.T) {

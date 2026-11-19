@@ -19,23 +19,42 @@ func release(sym uint32, mods neferclient.Modifiers) *neferclient.KeyEvent {
 	return &neferclient.KeyEvent{Keysym: sym, Modifiers: mods}
 }
 
-// newHold returns a hold that records fired actions.
-func newHold() (*powerHold, *[]ports.PowerAction) {
-	fired := &[]ports.PowerAction{}
-	return &powerHold{fire: func(a ports.PowerAction) { *fired = append(*fired, a) }}, fired
+// newHold returns a hold whose fired actions arrive on a buffered channel.
+func newHold() (*powerHold, chan ports.PowerAction) {
+	fired := make(chan ports.PowerAction, 8)
+	return &powerHold{fire: func(a ports.PowerAction) { fired <- a }}, fired
 }
 
-// runHold waits for hold ticks for d, advancing like the lock loop.
+// drained returns the actions fired so far.
+func drained(c chan ports.PowerAction) []ports.PowerAction {
+	var out []ports.PowerAction
+	for {
+		select {
+		case a := <-c:
+			out = append(out, a)
+		default:
+			return out
+		}
+	}
+}
+
+// runHold serves a running hold's ticks for d, advancing like the lock loop.
 func runHold(h *powerHold, d time.Duration) {
-	end := time.Now().Add(d)
-	for h.tick() != nil && time.Now().Before(end) {
+	for end := time.Now().Add(d); h.tick() != nil && time.Now().Before(end); {
 		<-h.tick()
 		h.advance(time.Now())
 	}
-	if h.tick() == nil {
-		return
-	}
-	time.Sleep(time.Until(end))
+}
+
+// requireNeverFires lets well over a hold elapse after a cancel and checks
+// that advancing still fires nothing.
+func requireNeverFires(t *testing.T, h *powerHold, fired chan ports.PowerAction) {
+	t.Helper()
+	require.Nil(t, h.tick())
+	time.Sleep(2 * powerHoldTime)
+	synctest.Wait()
+	h.advance(time.Now())
+	require.Empty(t, drained(fired))
 }
 
 func TestPowerSuspendFiresOnPress(t *testing.T) {
@@ -44,7 +63,7 @@ func TestPowerSuspendFiresOnPress(t *testing.T) {
 	rep := press(keysymF1, neferclient.ModCtrl)
 	rep.Repeat = true
 	h.keyEvent(rep, true)
-	require.Equal(t, []ports.PowerAction{ports.PowerSuspend}, *fired)
+	require.Equal(t, []ports.PowerAction{ports.PowerSuspend}, drained(fired))
 	require.Zero(t, h.progress(time.Now()))
 }
 
@@ -55,11 +74,11 @@ func TestPowerShortcutsNeedExactlyCtrl(t *testing.T) {
 		h.keyEvent(press(keysymF1, m), true)
 		h.keyEvent(press(keysymF2, m), true)
 	}
-	require.Empty(t, *fired)
+	require.Empty(t, drained(fired))
 	require.Zero(t, h.key)
 	// Caps Lock is not a blocking modifier.
 	h.keyEvent(press(keysymF1, neferclient.ModCtrl|neferclient.ModCapsLock), true)
-	require.Equal(t, []ports.PowerAction{ports.PowerSuspend}, *fired)
+	require.Equal(t, []ports.PowerAction{ports.PowerSuspend}, drained(fired))
 }
 
 func TestPowerRebootFiresOnlyAfterFullHold(t *testing.T) {
@@ -72,15 +91,17 @@ func TestPowerRebootFiresOnlyAfterFullHold(t *testing.T) {
 		require.Greater(t, h.progress(time.Now()), 0.0)
 		runHold(h, powerHoldTime/2)
 		require.InDelta(t, 0.5, h.progress(time.Now()), 0.05)
-		require.Empty(t, *fired)
+		require.Empty(t, drained(fired))
 		runHold(h, powerHoldTime)
-		require.Equal(t, []ports.PowerAction{ports.PowerReboot}, *fired)
+		require.Equal(t, []ports.PowerAction{ports.PowerReboot}, drained(fired))
 		require.Zero(t, h.progress(time.Now()))
 		require.Nil(t, h.tick())
 		// Still pressed after firing: nothing more until a new press.
 		h.keyEvent(rep, true)
 		h.keyEvent(release(keysymF2, neferclient.ModCtrl), true)
-		require.Len(t, *fired, 1)
+		time.Sleep(2 * powerHoldTime)
+		h.advance(time.Now())
+		require.Empty(t, drained(fired))
 	})
 }
 
@@ -99,8 +120,7 @@ func TestPowerHoldCancels(t *testing.T) {
 				runHold(h, powerHoldTime/2)
 				require.True(t, h.keyEvent(ev, true))
 				require.Zero(t, h.progress(time.Now()))
-				runHold(h, 2*powerHoldTime)
-				require.Empty(t, *fired)
+				requireNeverFires(t, h, fired)
 			})
 		})
 	}
@@ -115,8 +135,34 @@ func TestPowerHoldCancelsOnFocusLoss(t *testing.T) {
 		require.NotZero(t, l.power.key)
 		l.KeyboardFocus(1, false)
 		require.Zero(t, l.power.progress(time.Now()))
-		runHold(&l.power, 2*powerHoldTime)
-		require.Empty(t, *fired)
+		requireNeverFires(t, &l.power, fired)
+	})
+}
+
+func TestPowerHoldCancelsWhenCtrlLeavesModifiers(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		h, fired := newHold()
+		l := &locker{screens: &screens{}, power: *h}
+		l.power.keyEvent(press(keysymF2, neferclient.ModCtrl), true)
+		l.ModifiersChanged(neferclient.ModCtrl | neferclient.ModCapsLock)
+		require.NotZero(t, l.power.key, "Ctrl still held")
+		l.ModifiersChanged(0) // Ctrl held at focus: no Control release event
+		require.Zero(t, l.power.key)
+		requireNeverFires(t, &l.power, fired)
+	})
+}
+
+func TestPowerHoldSwitchesAndIgnoresUnrelatedReleases(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		h, fired := newHold()
+		h.keyEvent(press(keysymF2, neferclient.ModCtrl), true)
+		runHold(h, powerHoldTime/2)
+		require.True(t, h.keyEvent(press(keysymF3, neferclient.ModCtrl), true))
+		require.Equal(t, ports.PowerOff, h.action)
+		require.False(t, h.keyEvent(release(0xffe1, neferclient.ModCtrl), true), "Shift release keeps the hold")
+		require.Less(t, h.progress(time.Now()), 0.1, "the switch restarted the hold")
+		runHold(h, powerHoldTime)
+		require.Equal(t, []ports.PowerAction{ports.PowerOff}, drained(fired))
 	})
 }
 
@@ -128,7 +174,7 @@ func TestPowerShortcutsOffWhenDisabledOrNotLocked(t *testing.T) {
 	h, fired := newHold()
 	h.keyEvent(press(keysymF1, neferclient.ModCtrl), false)
 	h.keyEvent(press(keysymF3, neferclient.ModCtrl), false)
-	require.Empty(t, *fired)
+	require.Empty(t, drained(fired))
 	require.Zero(t, h.progress(time.Now()))
 }
 

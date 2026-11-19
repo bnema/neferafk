@@ -34,7 +34,7 @@ type lockState struct {
 	Caps   bool       // Caps Lock is on
 	Hold   float64    // hold-to-confirm progress in (0,1]; 0 when not held
 
-	Failures int       // rejected attempts since this lock started
+	Failures int       // rejected submissions since this lock started
 	LockedAt time.Time // when the compositor confirmed the lock; zero before
 }
 
@@ -163,7 +163,7 @@ type locker struct {
 	bound   bool            // Output is covered: only it shows the lock content
 	initial map[uint32]bool // outputs present at acquisition: their failures abort
 	status  lockStatus
-	fails   int       // rejected attempts shown as lockState.Failures
+	fails   int       // rejected submissions shown as lockState.Failures
 	at      time.Time // lock confirmation, shown as lockState.LockedAt
 	unlock  bool      // requested; honoured once locked
 	power   powerHold // Ctrl+F power shortcuts
@@ -246,9 +246,11 @@ func (l *locker) state(now time.Time) lockState {
 		Caps: l.caps, Hold: l.power.progress(now)}
 }
 
-// setStatus applies st and counts each rejection.
+// setStatus applies st and counts rejections of a submitted attempt: a
+// failure that follows lockBusy. A worker loss or launch failure outside an
+// attempt is not counted.
 func (l *locker) setStatus(st lockStatus) {
-	if st == lockFailed {
+	if st == lockFailed && l.status == lockBusy {
 		l.fails++
 	}
 	l.status = st
@@ -345,8 +347,10 @@ func (l *locker) LockFinished() {
 // typing works whichever lock surface has keyboard focus.
 func (l *locker) SecretChanged(int) { l.invalidateContent() }
 
-// Key handles the keys that are not secret text: Enter submits, Escape and
-// Ctrl+U clear. Before locked, Enter only clears.
+// Key first lets the power shortcuts see every event (presses, releases,
+// repeats and secret keys) so a hold can be cancelled. Then it handles the
+// keys that are not secret text: Enter submits, Escape and Ctrl+U clear.
+// Before locked, Enter only clears.
 func (l *locker) Key(ev *neferclient.KeyEvent) {
 	if l.lock != nil && l.power.keyEvent(ev, l.lock.Locked()) {
 		l.invalidateContent()
@@ -361,7 +365,8 @@ func (l *locker) Key(ev *neferclient.KeyEvent) {
 		case !l.lock.Locked() || l.cfg.OnSubmit == nil || l.secret.Len() == 0:
 		case len(l.secret.Bytes()) > ports.AuthMaxSecret:
 			if l.status != lockBusy { // an attempt still running keeps its status
-				l.setStatus(lockFailed) // too long to verify: refused like a wrong secret
+				l.fails++ // too long to verify: refused like a wrong secret
+				l.setStatus(lockFailed)
 			}
 		default:
 			l.cfg.OnSubmit(l.secret.Bytes())
@@ -371,18 +376,26 @@ func (l *locker) Key(ev *neferclient.KeyEvent) {
 	}
 }
 
-// ModifiersChanged tracks Caps Lock for the indicator bar.
+// ModifiersChanged tracks Caps Lock for the indicator bar and cancels a
+// power hold once Ctrl is no longer held.
 func (l *locker) ModifiersChanged(mods neferclient.Modifiers) {
+	redraw := false
 	if caps := mods&neferclient.ModCapsLock != 0; caps != l.caps {
 		l.caps = caps
+		redraw = true
+	}
+	// Ctrl held when the lock gained focus yields no Control release event.
+	if mods&neferclient.ModCtrl == 0 && l.power.cancel() {
+		redraw = true
+	}
+	if redraw {
 		l.invalidateContent()
 	}
 }
 
 // KeyboardFocus cancels a power hold when the lock loses the keyboard.
 func (l *locker) KeyboardFocus(_ neferclient.SurfaceID, focused bool) {
-	if !focused && l.power.key != 0 {
-		l.power.cancel()
+	if !focused && l.power.cancel() {
 		l.invalidateContent()
 	}
 }

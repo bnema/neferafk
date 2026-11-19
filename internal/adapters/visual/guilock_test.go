@@ -62,3 +62,26 @@ func TestCapsLockReachesLockState(t *testing.T) {
 	l.ModifiersChanged(0) // keyboard dropped
 	require.False(t, l.state(now).Caps)
 }
+
+func TestFailuresCountOnlyRejectedAttempts(t *testing.T) {
+	l := boundLocker("", map[neferclient.SurfaceID]*screen{})
+	l.setStatus(lockFailed) // worker loss outside an attempt
+	require.Zero(t, l.fails)
+	l.setStatus(lockBusy)
+	l.setStatus(lockFailed)
+	require.Equal(t, 1, l.fails)
+	l.setStatus(lockFailed) // repeated failure without a new attempt
+	require.Equal(t, 1, l.fails)
+	l.setStatus(lockBusy)
+	l.setStatus(lockFailed)
+	require.Equal(t, 2, l.fails)
+}
+
+func TestLockedRecordsLockTime(t *testing.T) {
+	l := boundLocker("", map[neferclient.SurfaceID]*screen{})
+	l.secret = neferclient.NewSecretBuffer(lockSecretMax)
+	require.True(t, l.state(time.Now()).LockedAt.IsZero())
+	before := time.Now()
+	l.Locked()
+	require.False(t, l.state(time.Now()).LockedAt.Before(before))
+}
