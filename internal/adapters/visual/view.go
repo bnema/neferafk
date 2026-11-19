@@ -63,9 +63,9 @@ var (
 	// cssBalance mirrors cssClock and cssLocked below the box.
 	cssBalance = fmt.Sprintf("height:%dpx;margin-top:%dpx", balanceH, boxGap)
 	// cssHintBalance mirrors the bar and cssHint above the field.
-	cssHint = fmt.Sprintf("color:#ffffff;margin-top:%dpx;height:%dpx;text-align:center", hintGap, hintH)
+	cssHint = hintCSS("#ffffff")
 	// cssPowerHelp is cssHint dimmed, for the power shortcut help.
-	cssPowerHelp   = fmt.Sprintf("color:rgba(255,255,255,0.5);margin-top:%dpx;height:%dpx;text-align:center", hintGap, hintH)
+	cssPowerHelp   = hintCSS("rgba(255,255,255,0.5)")
 	cssHintBalance = fmt.Sprintf("margin-bottom:%dpx;height:%dpx", hintGap, hintBalanceH)
 	// cssRelief is the inverted relief: bottom and right edges at 50% white.
 	cssRelief = fmt.Sprintf("border-bottom:%[1]dpx solid rgba(255,255,255,0.5);"+
@@ -117,6 +117,12 @@ func barCSS(s lockState, p promptKind) string {
 	}
 	return fmt.Sprintf("align-self:flex-start;height:%dpx;min-height:0px;margin-top:%dpx;margin-left:%dpx;width:%dpx;background-color:%s",
 		barH, barGap, fieldMargin(w), white, bg)
+}
+
+// hintCSS styles the line under the input in color; every hint keeps the
+// same height so swapping them never shifts the layout.
+func hintCSS(color string) string {
+	return fmt.Sprintf("color:%s;margin-top:%dpx;height:%dpx;text-align:center", color, hintGap, hintH)
 }
 
 // lockedText is the lock-time line, blank unless Ctrl reveals it.

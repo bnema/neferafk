@@ -394,14 +394,15 @@ func (l *locker) ctrlShown() bool { return l.ctrl && !l.at.IsZero() }
 func (l *locker) powerHelp() bool { return l.ctrlShown() && l.cfg.PowerActions }
 
 // ModifiersChanged tracks Caps Lock for the indicator bar and Ctrl for the
-// lock time and power shortcut help, and cancels a power hold once Ctrl is no longer held.
+// lock time and power shortcut help, and cancels a power hold once Ctrl is
+// no longer held.
 func (l *locker) ModifiersChanged(mods neferclient.Modifiers) {
 	redraw := false
 	if caps := mods&neferclient.ModCapsLock != 0; caps != l.caps {
 		l.caps = caps
 		redraw = true
 	}
-	held := mods&(neferclient.ModCtrl|neferclient.ModAlt|neferclient.ModSuper|neferclient.ModShift) == neferclient.ModCtrl
+	held := ctrlAlone(mods)
 	if held != l.ctrl {
 		l.ctrl = held
 		redraw = redraw || !l.at.IsZero()

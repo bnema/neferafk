@@ -53,7 +53,7 @@ func (h *powerHold) keyEvent(ev *neferclient.KeyEvent, locked bool) (changed boo
 		}
 	}
 	if !locked || h.fire == nil || ev.Secret || !ev.Pressed || ev.Repeat ||
-		ev.Modifiers&(neferclient.ModCtrl|neferclient.ModAlt|neferclient.ModSuper|neferclient.ModShift) != neferclient.ModCtrl {
+		!ctrlAlone(ev.Modifiers) {
 		return changed
 	}
 	switch ev.Keysym {
@@ -108,4 +108,10 @@ func (h *powerHold) advance(now time.Time) {
 		h.cancel()
 		h.fire(a)
 	}
+}
+
+// ctrlAlone reports whether Ctrl is held without Shift, Alt or Super. Caps
+// Lock does not matter.
+func ctrlAlone(m neferclient.Modifiers) bool {
+	return m&(neferclient.ModCtrl|neferclient.ModAlt|neferclient.ModSuper|neferclient.ModShift) == neferclient.ModCtrl
 }

@@ -91,7 +91,6 @@ func TestPowerHelpReplacesTheHint(t *testing.T) {
 	require.LessOrEqual(t, utf8.RuneCountInString(text), maxHintRunes)
 	require.Equal(t, cssPowerHelp, css)
 	require.Contains(t, css, "rgba(255,255,255,0.5)")
-	require.Contains(t, css, fmt.Sprintf("margin-top:%dpx;height:%dpx", hintGap, hintH), "same outer height")
 	text, css = hintLine(lockState{Status: lockFailed, Failures: 3}, promptMore)
 	require.Equal(t, "Denied ×3", text)
 	require.Equal(t, cssHint, css)

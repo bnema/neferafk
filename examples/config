@@ -16,7 +16,8 @@ sleep.after = 20m
 
 # Lock-screen shortcuts without authentication: Ctrl+F1 suspends, holding
 # Ctrl+F2 reboots and holding Ctrl+F3 powers off. Turning it on applies from
-# the next lock; turning it off applies at once.
+# the next lock; turning it off stops them at once
+# (the Ctrl help still shows until the next lock).
 # lock.power-actions = on
 
 # password (PAM service /etc/pam.d/neferafk) or pin.
