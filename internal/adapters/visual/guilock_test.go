@@ -66,22 +66,39 @@ func TestCapsLockReachesLockState(t *testing.T) {
 func TestFailuresCountOnlyRejectedAttempts(t *testing.T) {
 	l := boundLocker("", map[neferclient.SurfaceID]*screen{})
 	l.secret = neferclient.NewSecretBuffer(lockSecretMax)
-	l.cfg.OnSubmit = func([]byte) {}
+	ctl := newAuthController(testLog(), nil, boot(), workerTimeout)
+	l.cfg = newLockConfig(testLog(), ctl, make(chan struct{}, 1))
+	submit := func() { // the real wiring: OnSubmit queues a copy for the controller
+		l.submit()
+		select {
+		case s := <-ctl.submits:
+			clear(s)
+		default:
+		}
+	}
 	l.setStatus(lockFailed) // worker loss without a submission
 	require.Zero(t, l.fails)
-	l.submit()
+	submit()
 	l.setStatus(lockFailed) // fast rejection: lockBusy coalesced away
 	require.Equal(t, 1, l.fails)
 	l.setStatus(lockFailed) // no new submission
 	require.Equal(t, 1, l.fails)
-	l.submit()
+	submit()
 	l.setStatus(lockBusy)
 	l.setStatus(lockFailed)
 	require.Equal(t, 2, l.fails)
-	l.submit()
+	submit()
 	l.setStatus(lockIdle) // the attempt ended without a rejection
 	l.setStatus(lockFailed)
 	require.Equal(t, 2, l.fails)
+
+	submit()
+	l.refuseOversized() // an attempt is pending: not counted twice
+	l.setStatus(lockFailed)
+	require.Equal(t, 3, l.fails)
+	l.refuseOversized() // nothing pending: counted
+	require.Equal(t, 4, l.fails)
+	require.Equal(t, lockFailed, l.status)
 }
 
 func TestLockedRecordsLockTime(t *testing.T) {

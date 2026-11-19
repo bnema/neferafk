@@ -25,7 +25,9 @@ const (
 
 // powerHold tracks the lock screen power shortcuts: Ctrl+F1 suspends at
 // once, Ctrl+F2 (reboot) and Ctrl+F3 (poweroff) fire after a full hold. It
-// belongs to the lock owner goroutine and never sees secret text.
+// belongs to the lock owner goroutine and never sees secret text. Ctrl must
+// be physically held for the whole hold: a latched (sticky) Ctrl is cancelled
+// by ModifiersChanged once the latch releases, which is intended.
 type powerHold struct {
 	fire   func(ports.PowerAction)
 	key    uint32 // held keysym; 0 when no hold runs

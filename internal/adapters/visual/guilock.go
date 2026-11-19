@@ -249,8 +249,9 @@ func (l *locker) state(now time.Time) lockState {
 }
 
 // setStatus applies st and counts the first failure after a submission. The
-// status channel keeps only the latest value, so lockBusy may never be seen:
-// the submission itself marks the attempt. A failure without a submission
+// status channel drops its oldest value when full, and the lock may read
+// lockFailed before it sees lockBusy: the submission itself marks the
+// attempt. A failure without a submission
 // (worker loss, launch failure) is not counted.
 func (l *locker) setStatus(st lockStatus) {
 	switch st {
@@ -373,10 +374,7 @@ func (l *locker) Key(ev *neferclient.KeyEvent) {
 		switch {
 		case !l.lock.Locked() || l.cfg.OnSubmit == nil || l.secret.Len() == 0:
 		case len(l.secret.Bytes()) > ports.AuthMaxSecret:
-			if l.status != lockBusy { // an attempt still running keeps its status
-				l.fails++ // too long to verify: refused like a wrong secret
-				l.setStatus(lockFailed)
-			}
+			l.refuseOversized()
 		default:
 			l.submit()
 		}
@@ -415,6 +413,15 @@ func (l *locker) screenGone() {
 func (l *locker) KeyboardFocus(_ neferclient.SurfaceID, focused bool) {
 	if !focused && l.power.cancel() {
 		l.invalidateContent()
+	}
+}
+
+// refuseOversized refuses a secret too long to verify like a wrong one. A
+// running or pending attempt keeps its status and is counted when it fails.
+func (l *locker) refuseOversized() {
+	if l.status != lockBusy && !l.attempted {
+		l.fails++
+		l.status = lockFailed
 	}
 }
 
