@@ -10,8 +10,9 @@ import (
 )
 
 // Lock look: black screen, one monospace box with a grey border. The masked
-// input sits at the exact screen center: the date and lock-time lines above
-// the box and an equal-height spacer below it balance each other, and an
+// input sits at the exact screen center: the date line above the box (the
+// lock time while Ctrl is held) and an equal-height spacer below it balance
+// each other, and an
 // empty spacer inside the box balances the indicator bar and status line
 // under the input. The indicator bar is a 1px line under the field, always
 // laid out: a hold progress fill, or full white while Caps Lock is on. The
