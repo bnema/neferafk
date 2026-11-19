@@ -13,7 +13,7 @@ import (
 
 func TestCommandRoundTrip(t *testing.T) {
 	var b bytes.Buffer
-	lock := ports.VisualLock{Generation: 4, Auth: ports.AuthBootstrap{Generation: 4, PINSource: ports.PINSourceEnv, PINReference: "r", EnvPIN: []byte("123456")}, Output: "DP-2"}
+	lock := ports.VisualLock{Generation: 4, Auth: ports.AuthBootstrap{Generation: 4, PINSource: ports.PINSourceEnv, PINReference: "r", EnvPIN: []byte("123456")}, Output: "DP-2", PowerActions: true}
 	for _, c := range []ports.VisualCommand{ports.VisualFade{Black: true, Duration: 2 * time.Second}, ports.VisualFade{}, lock} {
 		if err := WriteCommand(&b, c); err != nil {
 			t.Fatal(err)
@@ -27,7 +27,7 @@ func TestCommandRoundTrip(t *testing.T) {
 	}
 	c, err := ReadCommand(&b)
 	got, ok := c.(ports.VisualLock)
-	if err != nil || !ok || got.Generation != 4 || got.Auth.Generation != 4 || got.Auth.PINSource != ports.PINSourceEnv || got.Auth.PINReference != "r" || string(got.Auth.EnvPIN) != "123456" || got.Output != "DP-2" {
+	if err != nil || !ok || got.Generation != 4 || got.Auth.Generation != 4 || got.Auth.PINSource != ports.PINSourceEnv || got.Auth.PINReference != "r" || string(got.Auth.EnvPIN) != "123456" || got.Output != "DP-2" || !got.PowerActions {
 		t.Fatalf("%#v %v", c, err)
 	}
 }
@@ -43,7 +43,7 @@ func TestCommandRejectsMismatchedGenerationAndGarbage(t *testing.T) {
 	if err := WriteCommand(&b, ports.VisualLock{Generation: 1, Auth: ports.AuthBootstrap{Generation: 1}, Output: strings.Repeat("x", ports.MaxOutputName+1)}); err == nil {
 		t.Fatal("oversized output name encoded")
 	}
-	for _, in := range []string{"", "NAV2", "XXXX\x01\x00\x00\x00\x00", "NAV1\x01\x00\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x00\x00", "NAV2\x09\x00\x00\x00\x00", "NAV2\x01\xff\xff\xff\xff", "NAV2\x01\x00\x00\x00\x02ab"} {
+	for _, in := range []string{"", "NAV3", "XXXX\x01\x00\x00\x00\x00", "NAV2\x01\x00\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x00\x00", "NAV3\x09\x00\x00\x00\x00", "NAV3\x01\xff\xff\xff\xff", "NAV3\x01\x00\x00\x00\x02ab"} {
 		if _, err := ReadCommand(bytes.NewReader([]byte(in))); err == nil {
 			t.Fatalf("%q accepted", in)
 		}
@@ -76,7 +76,7 @@ func TestEventRoundTripAndNoUnlockRequestExists(t *testing.T) {
 	if _, err := ReadEvent(&c); err == nil {
 		t.Fatal("command parsed as event")
 	}
-	if _, err := ReadCommand(bytes.NewReader([]byte("NAV2\x04\x00\x00\x00\x08\x00\x00\x00\x00\x00\x00\x00\x01"))); err == nil {
+	if _, err := ReadCommand(bytes.NewReader([]byte("NAV3\x04\x00\x00\x00\x08\x00\x00\x00\x00\x00\x00\x00\x01"))); err == nil {
 		t.Fatal("event parsed as command")
 	}
 }
@@ -91,6 +91,7 @@ func TestReadCommandBoundsLockFields(t *testing.T) {
 		"three fields":       {nil, nil, nil},
 	} {
 		p := binary.BigEndian.AppendUint64(nil, 1)
+		p = append(p, 0)
 		for _, f := range fields {
 			p = binary.BigEndian.AppendUint32(p, uint32(len(f)))
 			p = append(p, f...)
@@ -102,5 +103,48 @@ func TestReadCommandBoundsLockFields(t *testing.T) {
 		if _, err := ReadCommand(&b); err == nil {
 			t.Fatalf("%s accepted", name)
 		}
+	}
+}
+
+func TestPowerRequestedRoundTripAndValidation(t *testing.T) {
+	var b bytes.Buffer
+	for _, a := range []ports.PowerAction{ports.PowerSuspend, ports.PowerReboot, ports.PowerOff} {
+		want := ports.PowerRequested{Generation: 7, Action: a}
+		if err := WriteEvent(&b, want); err != nil {
+			t.Fatal(err)
+		}
+		if e, err := ReadEvent(&b); err != nil || e != want {
+			t.Fatalf("%#v %v", e, err)
+		}
+	}
+	for _, e := range []ports.PowerRequested{{Generation: 1}, {Generation: 1, Action: 4}, {Action: ports.PowerReboot}} {
+		if err := WriteEvent(&b, e); err == nil {
+			t.Fatalf("%#v encoded", e)
+		}
+	}
+	for _, in := range []string{
+		"NAV3\x05\x00\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x01\x00", // action 0
+		"NAV3\x05\x00\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x01\x04", // unknown action
+		"NAV3\x05\x00\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x00\x01", // zero generation
+		"NAV3\x05\x00\x00\x00\x08\x00\x00\x00\x00\x00\x00\x00\x01",     // short
+		"NAV2\x05\x00\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x01\x01", // old magic
+	} {
+		if _, err := ReadEvent(bytes.NewReader([]byte(in))); err == nil {
+			t.Fatalf("%q accepted", in)
+		}
+	}
+}
+
+func TestReadCommandRejectsInvalidPowerActionsByte(t *testing.T) {
+	p := append(binary.BigEndian.AppendUint64(nil, 1), 2)
+	for range 4 {
+		p = binary.BigEndian.AppendUint32(p, 0)
+	}
+	var b bytes.Buffer
+	if err := writeFrame(&b, kindLock, p); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadCommand(&b); err == nil {
+		t.Fatal("powerActions byte 2 accepted")
 	}
 }

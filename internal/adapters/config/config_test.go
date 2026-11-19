@@ -39,6 +39,19 @@ func TestLockOutput(t *testing.T) {
 		t.Fatal("control character in output name accepted")
 	}
 }
+func TestLockPowerActions(t *testing.T) {
+	if ports.Defaults().LockPowerActions {
+		t.Fatal("power actions enabled by default")
+	}
+	c, err := Parse(strings.NewReader("lock.power-actions = on\n"))
+	if err != nil || !c.LockPowerActions {
+		t.Fatal(c, err)
+	}
+	c, err = Parse(strings.NewReader("lock.power-actions = off\n"))
+	if err != nil || c.LockPowerActions {
+		t.Fatal(c, err)
+	}
+}
 func TestPassReferenceMetadataOnly(t *testing.T) {
 	c, err := Parse(strings.NewReader("auth.pin-source=pass\nauth.pin-entry=desktop/neferafk\n"))
 	if err != nil || c.Auth.PINEntry != "desktop/neferafk" {

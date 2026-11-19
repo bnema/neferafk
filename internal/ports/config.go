@@ -26,6 +26,9 @@ type Config struct {
 	// shows the lock prompt while it is connected. Empty, or absent: every
 	// output shows it. A change applies from the next lock.
 	LockOutput string `kv:"lock.output,nonempty"`
+	// LockPowerActions enables the lock screen power shortcuts (Ctrl+F1
+	// suspend, Ctrl+F2 reboot, Ctrl+F3 poweroff). Off by default.
+	LockPowerActions bool `kv:"lock.power-actions"`
 }
 
 // MaxOutputName bounds LockOutput: neferclient truncates longer wl_output

@@ -59,12 +59,14 @@ type VisualSpawn struct{ OmitEnv []string }
 // startup PIN value when the env source is selected). Auth.Generation equals
 // Generation and is the nonzero epoch scoping every auth frame. The visual,
 // not the daemon, spawns the auth worker and forwards Auth to it. Output is
-// Config.LockOutput.
+// Config.LockOutput. PowerActions mirrors Config.LockPowerActions so the
+// visual only arms its power shortcuts when the daemon would accept them.
 type VisualLock struct {
-	Generation Generation
-	Auth       AuthBootstrap
-	Output     string
-	Spawn      VisualSpawn
+	Generation   Generation
+	Auth         AuthBootstrap
+	Output       string
+	PowerActions bool
+	Spawn        VisualSpawn
 }
 
 func (VisualFade) visualCommand() {}
@@ -80,9 +82,30 @@ type VisualEvent interface{ visualEvent() }
 // unlock: a lock without a prior LockReleased is still held by the compositor.
 type VisualExited struct{ Err error }
 
-func (LockConfirmed) visualEvent() {}
-func (LockReleased) visualEvent()  {}
-func (VisualExited) visualEvent()  {}
+// PowerAction is a lock screen power shortcut. Zero is invalid.
+type PowerAction uint8
+
+const (
+	PowerSuspend PowerAction = iota + 1
+	PowerReboot
+	PowerOff
+)
+
+// Valid reports whether a is a known power action.
+func (a PowerAction) Valid() bool { return a >= PowerSuspend && a <= PowerOff }
+
+// PowerRequested is a request from the visual, never authority: the daemon
+// re-checks Config.LockPowerActions and that Generation is the current lock
+// before forwarding the action to logind.
+type PowerRequested struct {
+	Generation Generation
+	Action     PowerAction
+}
+
+func (LockConfirmed) visualEvent()  {}
+func (LockReleased) visualEvent()   {}
+func (VisualExited) visualEvent()   {}
+func (PowerRequested) visualEvent() {}
 
 // VisualLauncher is the os/exec adapter seam: it starts one visual process
 // with a private anonymous pipe pair (child fd 3 = commands in, fd 4 = events

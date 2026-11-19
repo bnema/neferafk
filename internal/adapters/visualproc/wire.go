@@ -4,15 +4,16 @@
 //
 // Wire format, both directions (fd 3: daemon->visual, fd 4: visual->daemon):
 //
-//	"NAV2" | kind u8 | length u32 BE | payload
+//	"NAV3" | kind u8 | length u32 BE | payload
 //
 // The magic names the format version: the daemon re-executes its binary as
 // the visual, so an upgrade under a running daemon fails with ErrProtocol.
 //
 // Commands: 1 Fade {black u8, duration i64 ns BE}; 2 Lock {generation u64,
-// then four u32-length-prefixed byte strings: PINSource, PINReference,
-// EnvPIN, Output}. Events: 3 LockConfirmed {generation u64}; 4 LockReleased
-// {generation u64}. Process exit is observed by the launcher, not sent.
+// powerActions u8 (0/1), then four u32-length-prefixed byte strings:
+// PINSource, PINReference, EnvPIN, Output}. Events: 3 LockConfirmed
+// {generation u64}; 4 LockReleased {generation u64}; 5 PowerRequested
+// {generation u64, action u8}. Process exit is observed by the launcher, not sent.
 package visualproc
 
 import (
@@ -31,10 +32,11 @@ const (
 	kindLock
 	kindConfirmed
 	kindReleased
-	maxPayload = 8 + 4*4 + 2*ports.AuthMaxMetadata + ports.AuthMaxSecret + ports.MaxOutputName
+	kindPower
+	maxPayload = 8 + 1 + 4*4 + 2*ports.AuthMaxMetadata + ports.AuthMaxSecret + ports.MaxOutputName
 )
 
-const magic = "NAV2"
+const magic = "NAV3"
 
 func writeFrame(w io.Writer, kind byte, payload []byte) error {
 	buf := make([]byte, 9+len(payload))
@@ -88,6 +90,7 @@ func WriteCommand(w io.Writer, cmd ports.VisualCommand) error {
 			return ErrProtocol
 		}
 		p := binary.BigEndian.AppendUint64(nil, uint64(c.Generation))
+		p = append(p, boolByte(c.PowerActions))
 		for _, f := range fields {
 			p = binary.BigEndian.AppendUint32(p, uint32(len(f)))
 			p = append(p, f...)
@@ -117,11 +120,12 @@ func ReadCommand(r io.Reader) (ports.VisualCommand, error) {
 		}
 		return ports.VisualFade{Black: p[0] == 1, Duration: d}, nil
 	case kindLock:
-		if len(p) < 8 {
+		if len(p) < 9 || p[8] > 1 {
 			return nil, ErrProtocol
 		}
 		gen := binary.BigEndian.Uint64(p)
-		rest := p[8:]
+		power := p[8] == 1
+		rest := p[9:]
 		var f [4][]byte
 		for i := range f {
 			if len(rest) < 4 {
@@ -137,7 +141,7 @@ func ReadCommand(r io.Reader) (ports.VisualCommand, error) {
 		if gen == 0 || len(rest) != 0 || len(f[0]) > 16 || len(f[1]) > ports.AuthMaxMetadata || len(f[2]) > ports.AuthMaxSecret || len(f[3]) > ports.MaxOutputName {
 			return nil, ErrProtocol
 		}
-		return ports.VisualLock{Generation: ports.Generation(gen), Auth: ports.AuthBootstrap{Generation: gen, PINSource: ports.PINSource(f[0]), PINReference: string(f[1]), EnvPIN: append([]byte(nil), f[2]...)}, Output: string(f[3])}, nil
+		return ports.VisualLock{Generation: ports.Generation(gen), Auth: ports.AuthBootstrap{Generation: gen, PINSource: ports.PINSource(f[0]), PINReference: string(f[1]), EnvPIN: append([]byte(nil), f[2]...)}, Output: string(f[3]), PowerActions: power}, nil
 	}
 	return nil, ErrProtocol
 }
@@ -149,6 +153,11 @@ func WriteEvent(w io.Writer, ev ports.VisualEvent) error {
 		return writeFrame(w, kindConfirmed, binary.BigEndian.AppendUint64(nil, uint64(e.Generation)))
 	case ports.LockReleased:
 		return writeFrame(w, kindReleased, binary.BigEndian.AppendUint64(nil, uint64(e.Generation)))
+	case ports.PowerRequested:
+		if e.Generation == 0 || !e.Action.Valid() {
+			return ErrProtocol
+		}
+		return writeFrame(w, kindPower, append(binary.BigEndian.AppendUint64(nil, uint64(e.Generation)), byte(e.Action)))
 	}
 	return ErrProtocol
 }
@@ -158,6 +167,12 @@ func ReadEvent(r io.Reader) (ports.VisualEvent, error) {
 	kind, p, err := readFrame(r)
 	if err != nil {
 		return nil, err
+	}
+	if kind == kindPower {
+		if len(p) != 9 || binary.BigEndian.Uint64(p) == 0 || !ports.PowerAction(p[8]).Valid() {
+			return nil, ErrProtocol
+		}
+		return ports.PowerRequested{Generation: ports.Generation(binary.BigEndian.Uint64(p)), Action: ports.PowerAction(p[8])}, nil
 	}
 	if len(p) != 8 || binary.BigEndian.Uint64(p) == 0 {
 		return nil, ErrProtocol
@@ -170,4 +185,11 @@ func ReadEvent(r io.Reader) (ports.VisualEvent, error) {
 		return ports.LockReleased{Generation: gen}, nil
 	}
 	return nil, ErrProtocol
+}
+
+func boolByte(b bool) byte {
+	if b {
+		return 1
+	}
+	return 0
 }

@@ -12,10 +12,11 @@ import (
 // daemon that cannot observe activity or lock is unsupported, and manual lock
 // (logind Lock, control socket) needs the lock protocols even with lock.after
 // off. Output power and sleep support are required only when enabled; enabling
-// them later by live reload needs a restart (a warning is logged).
+// them later by live reload needs a restart (a warning is logged). Lock power
+// actions need Sleep (suspend) and Power (reboot/poweroff probing).
 func Requirements(cfg ports.Config) (ports.WaylandRequirements, ports.SystemRequirements) {
 	return ports.WaylandRequirements{Idle: true, InputWake: true, OutputPower: cfg.OffAfter > 0, Lock: true, Visual: true},
-		ports.SystemRequirements{Session: true, Sleep: cfg.SleepAfter > 0 || cfg.LockAfter > 0}
+		ports.SystemRequirements{Session: true, Sleep: cfg.SleepAfter > 0 || cfg.LockAfter > 0 || cfg.LockPowerActions, Power: cfg.LockPowerActions}
 }
 
 // UnsupportedError lists every missing capability, one per line.

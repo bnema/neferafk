@@ -5,11 +5,15 @@ import "time"
 // System events are observations, never authentication/unlock authority.
 type SystemEvent interface{ systemEvent() }
 type SystemCapabilities struct {
-	Session              bool
-	Suspend              bool
-	SuspendAuthorization string // yes, challenge, no, na
-	DelayMax             time.Duration
-	Missing              []string
+	Session               bool
+	Suspend               bool
+	SuspendAuthorization  string // yes, challenge, no, na
+	Reboot                bool
+	RebootAuthorization   string // yes, challenge, no, na
+	PowerOff              bool
+	PowerOffAuthorization string // yes, challenge, no, na
+	DelayMax              time.Duration
+	Missing               []string
 }
 type SystemCapabilityReport struct{ Capabilities SystemCapabilities }
 type SystemLockRequested struct{}
@@ -42,10 +46,19 @@ type SystemCommand interface{ systemCommand() }
 type SystemSleepReady struct{ Cycle uint64 }
 type SystemSuspend struct{}
 
+// SystemReboot and SystemPowerOff are non-interactive logind requests, sent
+// only for a daemon-validated lock screen power action.
+type SystemReboot struct{}
+type SystemPowerOff struct{}
+
 func (SystemSleepReady) systemCommand() {}
 func (SystemSuspend) systemCommand()    {}
+func (SystemReboot) systemCommand()     {}
+func (SystemPowerOff) systemCommand()   {}
 
-type SystemRequirements struct{ Session, Sleep bool }
+// SystemRequirements: Sleep enables suspend and the sleep delay inhibitor;
+// Power enables reboot/poweroff capability probing (lock power actions).
+type SystemRequirements struct{ Session, Sleep, Power bool }
 
 type SystemKeyboardBacklight struct{ On bool }
 
