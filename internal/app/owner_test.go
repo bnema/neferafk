@@ -844,3 +844,36 @@ func TestStartupGateWarnsForUnavailablePowerActions(t *testing.T) {
 		t.Fatal("warned for available reboot")
 	}
 }
+
+// A request while the lock is still being acquired is accepted: the
+// generation already scopes the lock the visual is showing.
+func TestPowerRequestAcceptedWhileAcquiring(t *testing.T) {
+	cfg := cfgOf(0, 0, 0, 0)
+	cfg.LockPowerActions = true
+	h := newHarness(t, cfg, nil)
+	locks := h.lockCapture()
+	h.visual.EXPECT().Detach().Return(nil).Once()
+	h.deadlines()
+	h.sysEv <- ports.SystemLockRequested{}
+	l := lockOf(t, locks)
+	if st := h.status(); !st.Acquiring || st.Protected {
+		t.Fatalf("status %+v", st)
+	}
+	h.visEv <- ports.PowerRequested{Generation: l.Generation, Action: ports.PowerReboot}
+	if got := h.powerCommand(); got != (ports.SystemReboot{}) {
+		t.Fatalf("sent %#v", got)
+	}
+}
+
+func TestPowerQueuedDetectsPendingPowerCommands(t *testing.T) {
+	o := &Owner{sq: []ports.SystemCommand{ports.SystemKeyboardBacklight{}}}
+	if o.powerQueued() {
+		t.Fatal("backlight counted as power command")
+	}
+	for _, c := range []ports.SystemCommand{ports.SystemSuspend{}, ports.SystemReboot{}, ports.SystemPowerOff{}} {
+		o.sq = []ports.SystemCommand{ports.SystemSleepReady{}, c}
+		if !o.powerQueued() {
+			t.Fatalf("%#v not detected", c)
+		}
+	}
+}

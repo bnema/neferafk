@@ -541,9 +541,12 @@ func (o *Owner) visual(ctx context.Context, ev ports.VisualEvent) error {
 // the daemon decides from the current config and lock generation. Turning
 // lock.power-actions off by reload takes effect at once here, while turning
 // it on reaches the visual (VisualLock.PowerActions) from the next lock.
+// A request while the lock is still being acquired (before LockConfirmed) is
+// accepted: the visual only shows shortcuts on its lock surface, and the
+// generation already scopes that lock. At most one power command is queued.
 // It never changes lock state.
 func (o *Owner) power(v ports.PowerRequested) {
-	log := o.log.Info().Uint64("generation", uint64(v.Generation)).Uint8("action", uint8(v.Action))
+	log := o.log.Info().Uint64("generation", uint64(v.Generation)).Str("action", v.Action.String())
 	var cmd ports.SystemCommand
 	switch v.Action {
 	case ports.PowerSuspend:
@@ -560,10 +563,22 @@ func (o *Owner) power(v ports.PowerRequested) {
 		log.Msg("power request ignored: not the current lock")
 	case cmd == nil:
 		log.Msg("power request ignored: unknown action")
+	case o.powerQueued():
+		o.log.Debug().Uint64("generation", uint64(v.Generation)).Str("action", v.Action.String()).Msg("power request ignored: one already queued")
 	default:
 		log.Msg("power request accepted")
 		o.sq = append(o.sq, cmd)
 	}
+}
+
+func (o *Owner) powerQueued() bool {
+	for _, c := range o.sq {
+		switch c.(type) {
+		case ports.SystemSuspend, ports.SystemReboot, ports.SystemPowerOff:
+			return true
+		}
+	}
+	return false
 }
 
 func (o *Owner) control(ctx context.Context, req ports.ControlRequest) error {
