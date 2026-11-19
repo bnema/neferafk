@@ -167,6 +167,7 @@ type locker struct {
 	at      time.Time // lock confirmation, shown as lockState.LockedAt
 	unlock  bool      // requested; honoured once locked
 	power   powerHold // Ctrl+F power shortcuts
+	caps    bool      // Caps Lock is on, shown as lockState.Caps
 }
 
 // wait blocks for one event and applies it.
@@ -236,8 +237,13 @@ func (l *locker) view(f *nefergui.Frame, s *screen) {
 		f.Root(nefergui.Inline(cssBlack))
 		return
 	}
-	l.cfg.View(f, lockState{Mask: l.secret.Len(), Status: l.status, Failures: l.fails, LockedAt: l.at,
-		Hold: l.power.progress(time.Now())})
+	l.cfg.View(f, l.state(time.Now()))
+}
+
+// state is what the view may show at now: never the secret itself.
+func (l *locker) state(now time.Time) lockState {
+	return lockState{Mask: l.secret.Len(), Status: l.status, Failures: l.fails, LockedAt: l.at,
+		Caps: l.caps, Hold: l.power.progress(now)}
 }
 
 // setStatus applies st and counts each rejection.
@@ -362,6 +368,14 @@ func (l *locker) Key(ev *neferclient.KeyEvent) {
 		}
 	case ev.Keysym == keysymEscape, (ev.Keysym == keysymU || ev.Keysym == keysymUpperU) && ev.Modifiers&neferclient.ModCtrl != 0:
 		l.clearSecret()
+	}
+}
+
+// ModifiersChanged tracks Caps Lock for the indicator bar.
+func (l *locker) ModifiersChanged(mods neferclient.Modifiers) {
+	if caps := mods&neferclient.ModCapsLock != 0; caps != l.caps {
+		l.caps = caps
+		l.invalidateContent()
 	}
 }
 

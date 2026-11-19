@@ -2,6 +2,7 @@ package visual
 
 import (
 	"testing"
+	"time"
 
 	"bnema.dev/neferclient"
 	"github.com/stretchr/testify/require"
@@ -45,4 +46,19 @@ func TestLockOutputBindsContentWhileCovered(t *testing.T) {
 	l.rebind()
 	require.False(t, l.shows(hdmi))
 	require.True(t, l.shows(dp))
+}
+
+func TestCapsLockReachesLockState(t *testing.T) {
+	hdmi := &screen{output: 49, name: "HDMI-A-1"}
+	l := boundLocker("", map[neferclient.SurfaceID]*screen{1: hdmi})
+	l.secret = neferclient.NewSecretBuffer(lockSecretMax)
+	now := time.Now()
+	require.False(t, l.state(now).Caps)
+	l.ModifiersChanged(neferclient.ModCapsLock | neferclient.ModNumLock)
+	require.True(t, l.state(now).Caps)
+	l.ModifiersChanged(neferclient.ModNumLock)
+	require.False(t, l.state(now).Caps)
+	l.ModifiersChanged(neferclient.ModCapsLock)
+	l.ModifiersChanged(0) // keyboard dropped
+	require.False(t, l.state(now).Caps)
 }
