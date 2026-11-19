@@ -169,8 +169,13 @@ func (a *Adapter) Probe(ctx context.Context) error {
 		}
 	}
 	if a.requirements.Power {
-		// Reboot/PowerOff only degrade the lock screen power actions, so they
-		// never enter Missing; the authorization explains a false capability.
+		// Lock screen power actions only degrade, so they never enter Missing
+		// and need no inhibitor; the authorization explains a false capability.
+		// Suspend is probed here too when sleep support is off.
+		if !a.requirements.Sleep {
+			a.caps.SuspendAuthorization = a.canAction(ctx, "CanSuspend")
+			a.caps.Suspend = a.caps.SuspendAuthorization == "yes"
+		}
 		a.caps.RebootAuthorization = a.canAction(ctx, "CanReboot")
 		a.caps.Reboot = a.caps.RebootAuthorization == "yes"
 		a.caps.PowerOffAuthorization = a.canAction(ctx, "CanPowerOff")
@@ -183,12 +188,16 @@ func (a *Adapter) Probe(ctx context.Context) error {
 // Only "yes" works with interactive=false.
 func (a *Adapter) canAction(ctx context.Context, method string) string {
 	body, err := a.call(ctx, managerPath, managerInterface+"."+method)
-	if err != nil || len(body) != 1 {
+	if err != nil {
+		a.log.Warn().Err(err).Str("method", method).Msg("power capability query failed")
 		return "error"
 	}
-	if auth, ok := body[0].(string); ok {
-		return auth
+	if len(body) == 1 {
+		if auth, ok := body[0].(string); ok {
+			return auth
+		}
 	}
+	a.log.Warn().Str("method", method).Msg("invalid power capability reply")
 	return "error"
 }
 
@@ -419,7 +428,7 @@ func (a *Adapter) Run(ctx context.Context, commands <-chan ports.SystemCommand, 
 					a.release()
 				}
 			case ports.SystemSuspend, ports.SystemReboot, ports.SystemPowerOff:
-				op, method, inhibit, allowed := "suspend", "Suspend", "sleep", a.requirements.Sleep && a.caps.Suspend
+				op, method, inhibit, allowed := "suspend", "Suspend", "sleep", (a.requirements.Sleep || a.requirements.Power) && a.caps.Suspend
 				switch c.(type) {
 				case ports.SystemReboot:
 					op, method, inhibit, allowed = "reboot", "Reboot", "shutdown", a.requirements.Power && a.caps.Reboot
@@ -452,7 +461,7 @@ func (a *Adapter) blockedAction(ctx context.Context, op, inhibit string, allowed
 	}
 	blocked, err := a.property(ctx, managerPath, managerInterface, "BlockInhibited")
 	if err != nil {
-		return err
+		return fmt.Errorf("read BlockInhibited: %w", err)
 	}
 	value, ok := blocked.(string)
 	if !ok {

@@ -13,6 +13,7 @@ import (
 func TestProbePowerCapabilitiesNeverMissing(t *testing.T) {
 	b := newMockbus(t)
 	b.EXPECT().call(mock.Anything, "org.freedesktop.DBus", objectPath("/org/freedesktop/DBus"), "org.freedesktop.DBus.GetNameOwner", []any{service}).Return([]any{testOwner}, nil).Once()
+	b.EXPECT().call(mock.Anything, testOwner, managerPath, managerInterface+".CanSuspend").Return([]any{"yes"}, nil).Once()
 	b.EXPECT().call(mock.Anything, testOwner, managerPath, managerInterface+".CanReboot").Return([]any{"yes"}, nil).Once()
 	b.EXPECT().call(mock.Anything, testOwner, managerPath, managerInterface+".CanPowerOff").Return([]any{"challenge"}, nil).Once()
 	a := newAdapter(b, ports.SystemRequirements{Power: true})
@@ -20,7 +21,7 @@ func TestProbePowerCapabilitiesNeverMissing(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := a.Capabilities()
-	if !c.Reboot || c.RebootAuthorization != "yes" || c.PowerOff || c.PowerOffAuthorization != "challenge" || len(c.Missing) != 0 {
+	if !c.Suspend || c.SuspendAuthorization != "yes" || !c.Reboot || c.RebootAuthorization != "yes" || c.PowerOff || c.PowerOffAuthorization != "challenge" || len(c.Missing) != 0 {
 		t.Fatalf("capabilities %+v", c)
 	}
 }
@@ -28,13 +29,14 @@ func TestProbePowerCapabilitiesNeverMissing(t *testing.T) {
 func TestProbePowerErrorsDegradeOnly(t *testing.T) {
 	b := newMockbus(t)
 	b.EXPECT().call(mock.Anything, "org.freedesktop.DBus", objectPath("/org/freedesktop/DBus"), "org.freedesktop.DBus.GetNameOwner", []any{service}).Return([]any{testOwner}, nil).Once()
+	b.EXPECT().call(mock.Anything, testOwner, managerPath, managerInterface+".CanSuspend").Return([]any{}, nil).Once()
 	b.EXPECT().call(mock.Anything, testOwner, managerPath, managerInterface+".CanReboot").Return(nil, errors.New("denied")).Once()
 	b.EXPECT().call(mock.Anything, testOwner, managerPath, managerInterface+".CanPowerOff").Return([]any{uint32(1)}, nil).Once()
 	a := newAdapter(b, ports.SystemRequirements{Power: true})
 	if err := a.Probe(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if c := a.Capabilities(); c.Reboot || c.PowerOff || c.RebootAuthorization != "error" || c.PowerOffAuthorization != "error" || len(c.Missing) != 0 {
+	if c := a.Capabilities(); c.Suspend || c.SuspendAuthorization != "error" || c.Reboot || c.PowerOff || c.RebootAuthorization != "error" || c.PowerOffAuthorization != "error" || len(c.Missing) != 0 {
 		t.Fatalf("capabilities %+v", c)
 	}
 }
@@ -118,7 +120,7 @@ func TestPowerActionsRefusedWithoutCallingLogind(t *testing.T) {
 		"poweroff unauthorized":   {ports.SystemRequirements{Power: true}, false, "", ports.SystemPowerOff{}, "poweroff"},
 		"reboot shutdown block":   {ports.SystemRequirements{Power: true}, true, "sleep:shutdown", ports.SystemReboot{}, "reboot"},
 		"poweroff shutdown block": {ports.SystemRequirements{Power: true}, true, "shutdown", ports.SystemPowerOff{}, "poweroff"},
-		"suspend without sleep":   {ports.SystemRequirements{Power: true}, true, "", ports.SystemSuspend{}, "suspend"},
+		"suspend not required":    {ports.SystemRequirements{Session: true}, true, "", ports.SystemSuspend{}, "suspend"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			b := newMockbus(t)
@@ -153,6 +155,49 @@ func TestOnePowerRequestPendingAtATime(t *testing.T) {
 	events, commands, done := runPower(t, a, b, ports.SystemReboot{}, ports.SystemPowerOff{})
 	if f := failure(t, events); f.Operation != "poweroff" {
 		t.Fatalf("%#v", f)
+	}
+	close(commands)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPowerOnlySuspendAndSuccessClearsPending(t *testing.T) {
+	b := newMockbus(t)
+	a := newAdapter(b, ports.SystemRequirements{Power: true})
+	a.owner = testOwner
+	a.caps.Suspend, a.caps.Reboot = true, true
+	b.EXPECT().call(mock.Anything, testOwner, managerPath, "org.freedesktop.DBus.Properties.Get", []any{managerInterface, "BlockInhibited"}).Return([]any{makeVariant("")}, nil).Twice()
+	first := make(chan struct{})
+	b.EXPECT().powerAction(mock.Anything, testOwner, "Suspend").RunAndReturn(func(context.Context, string, string) <-chan *actionResult {
+		reply := make(chan *actionResult, 1)
+		reply <- &actionResult{} // success
+		close(first)
+		return reply
+	}).Once()
+	second := make(chan struct{})
+	b.EXPECT().powerAction(mock.Anything, testOwner, "Reboot").RunAndReturn(func(context.Context, string, string) <-chan *actionResult {
+		close(second)
+		return make(chan *actionResult, 1)
+	}).Once()
+	events, commands, done := runPower(t, a, b)
+	commands <- ports.SystemSuspend{}
+	<-first
+	commands <- ports.SystemReboot{}
+	for waiting := true; waiting; {
+		select {
+		case <-second:
+			waiting = false
+		case e := <-events:
+			// Run may still see the suspend pending if the command won the
+			// select over the reply; the next attempt must succeed.
+			if f, ok := e.(ports.SystemFailure); !ok || f.Operation != "reboot" || f.Err.Error() != "power request already pending" {
+				t.Fatalf("unexpected event %#v", e)
+			}
+			commands <- ports.SystemReboot{}
+		case <-time.After(time.Second):
+			t.Fatal("reboot not requested after successful suspend")
+		}
 	}
 	close(commands)
 	if err := <-done; err != nil {
