@@ -288,12 +288,12 @@ func TestRunMatchingSleepCycleAndSuspendFalse(t *testing.T) {
 	b.EXPECT().call(mock.Anything, testOwner, managerPath, managerInterface+".Inhibit", []any{"sleep", "neferafk", "session protection", "delay"}).Return([]any{received}, nil).Once()
 	suspended := make(chan struct{})
 	b.EXPECT().call(mock.Anything, testOwner, managerPath, "org.freedesktop.DBus.Properties.Get", []any{managerInterface, "BlockInhibited"}).Return([]any{makeVariant("")}, nil).Once()
-	b.EXPECT().suspend(mock.Anything, testOwner).RunAndReturn(func(ctx context.Context, _ string) <-chan *suspendResult {
+	b.EXPECT().powerAction(mock.Anything, testOwner, "Suspend").RunAndReturn(func(ctx context.Context, _, _ string) <-chan *actionResult {
 		if _, ok := ctx.Deadline(); !ok {
 			t.Error("unbounded suspend call")
 		}
 		close(suspended)
-		return make(chan *suspendResult, 1) // reply held: owner must still process SleepReady
+		return make(chan *actionResult, 1) // reply held: owner must still process SleepReady
 	}).Once()
 	commands := make(chan ports.SystemCommand)
 	events := make(chan ports.SystemEvent, 8)

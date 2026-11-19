@@ -46,7 +46,9 @@ type signal struct {
 	Name   string
 	Body   []any
 }
-type suspendResult struct{ Err error }
+
+// actionResult is the reply to a non-interactive manager power call.
+type actionResult struct{ Err error }
 type signalMatch struct {
 	Sender    string
 	Path      objectPath
@@ -56,7 +58,9 @@ type signalMatch struct {
 // bus is an adapter-local seam; newAdapter consumes its connection.
 type bus interface {
 	call(context.Context, string, objectPath, string, ...any) ([]any, error)
-	suspend(context.Context, string) <-chan *suspendResult
+	// powerAction calls managerInterface.<method>(false) (Suspend, Reboot
+	// or PowerOff) asynchronously.
+	powerAction(ctx context.Context, owner, method string) <-chan *actionResult
 	match(context.Context, signalMatch) error
 	signals(chan<- *signal)
 	removeSignals(chan<- *signal)
@@ -161,33 +165,33 @@ func decodeReply(m *zerobus.Msg) ([]any, error) {
 	}
 	return []any{value}, nil
 }
-func (c *connection) suspend(ctx context.Context, owner string) <-chan *suspendResult {
-	out := make(chan *suspendResult, 1)
-	c.d.NewCall(owner, string(managerPath), managerInterface, "Suspend", "b").Bool(false)
+func (c *connection) powerAction(ctx context.Context, owner, method string) <-chan *actionResult {
+	out := make(chan *actionResult, 1)
+	c.d.NewCall(owner, string(managerPath), managerInterface, method, "b").Bool(false)
 	p, err := c.d.Go()
 	if err != nil {
-		out <- &suspendResult{err}
+		out <- &actionResult{err}
 		return out
 	}
 	c.wg.Go(func() {
 		defer p.Cancel()
 		select {
 		case <-ctx.Done():
-			out <- &suspendResult{ctx.Err()}
+			out <- &actionResult{ctx.Err()}
 			return
 		case <-c.stop:
 			return
 		case <-p.Done():
 		}
 		if err := ctx.Err(); err != nil {
-			out <- &suspendResult{err}
+			out <- &actionResult{err}
 			return
 		}
 		m, err := p.Result()
 		if m != nil {
 			m.Close()
 		}
-		out <- &suspendResult{err}
+		out <- &actionResult{err}
 	})
 	return out
 }

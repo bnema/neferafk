@@ -242,6 +242,71 @@ func (_c *mockbus_match_Call) RunAndReturn(run func(context1 context.Context, si
 	return _c
 }
 
+// powerAction provides a mock function for the type mockbus
+func (_mock *mockbus) powerAction(ctx context.Context, owner string, method string) <-chan *actionResult {
+	ret := _mock.Called(ctx, owner, method)
+
+	if len(ret) == 0 {
+		panic("no return value specified for powerAction")
+	}
+
+	var r0 <-chan *actionResult
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) <-chan *actionResult); ok {
+		r0 = returnFunc(ctx, owner, method)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(<-chan *actionResult)
+		}
+	}
+	return r0
+}
+
+// mockbus_powerAction_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'powerAction'
+type mockbus_powerAction_Call struct {
+	*mock.Call
+}
+
+// powerAction is a helper method to define mock.On call
+//   - ctx context.Context
+//   - owner string
+//   - method string
+func (_e *mockbus_Expecter) powerAction(ctx any, owner any, method any) *mockbus_powerAction_Call {
+	return &mockbus_powerAction_Call{Call: _e.mock.On("powerAction", ctx, owner, method)}
+}
+
+func (_c *mockbus_powerAction_Call) Run(run func(ctx context.Context, owner string, method string)) *mockbus_powerAction_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *mockbus_powerAction_Call) Return(actionResultMoqParamCh <-chan *actionResult) *mockbus_powerAction_Call {
+	_c.Call.Return(actionResultMoqParamCh)
+	return _c
+}
+
+func (_c *mockbus_powerAction_Call) RunAndReturn(run func(ctx context.Context, owner string, method string) <-chan *actionResult) *mockbus_powerAction_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // removeSignals provides a mock function for the type mockbus
 func (_mock *mockbus) removeSignals(signalMoqParamCh chan<- *signal) {
 	_mock.Called(signalMoqParamCh)
@@ -319,65 +384,6 @@ func (_c *mockbus_signals_Call) Return() *mockbus_signals_Call {
 
 func (_c *mockbus_signals_Call) RunAndReturn(run func(signalMoqParamCh chan<- *signal)) *mockbus_signals_Call {
 	_c.Run(run)
-	return _c
-}
-
-// suspend provides a mock function for the type mockbus
-func (_mock *mockbus) suspend(context1 context.Context, s string) <-chan *suspendResult {
-	ret := _mock.Called(context1, s)
-
-	if len(ret) == 0 {
-		panic("no return value specified for suspend")
-	}
-
-	var r0 <-chan *suspendResult
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) <-chan *suspendResult); ok {
-		r0 = returnFunc(context1, s)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(<-chan *suspendResult)
-		}
-	}
-	return r0
-}
-
-// mockbus_suspend_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'suspend'
-type mockbus_suspend_Call struct {
-	*mock.Call
-}
-
-// suspend is a helper method to define mock.On call
-//   - context1 context.Context
-//   - s string
-func (_e *mockbus_Expecter) suspend(context1 any, s any) *mockbus_suspend_Call {
-	return &mockbus_suspend_Call{Call: _e.mock.On("suspend", context1, s)}
-}
-
-func (_c *mockbus_suspend_Call) Run(run func(context1 context.Context, s string)) *mockbus_suspend_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 string
-		if args[1] != nil {
-			arg1 = args[1].(string)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *mockbus_suspend_Call) Return(suspendResultMoqParamCh <-chan *suspendResult) *mockbus_suspend_Call {
-	_c.Call.Return(suspendResultMoqParamCh)
-	return _c
-}
-
-func (_c *mockbus_suspend_Call) RunAndReturn(run func(context1 context.Context, s string) <-chan *suspendResult) *mockbus_suspend_Call {
-	_c.Call.Return(run)
 	return _c
 }
 

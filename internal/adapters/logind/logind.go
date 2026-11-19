@@ -50,7 +50,7 @@ type Adapter struct {
 // features are off. Connection failure is an unsupported capability, not a
 // reason to force system initialization at daemon startup.
 func Open(ctx context.Context, requirements ports.SystemRequirements, log zerowrap.Logger) (*Adapter, error) {
-	if !requirements.Session && !requirements.Sleep {
+	if !requirements.Session && !requirements.Sleep && !requirements.Power {
 		return nil, errors.New("logind not requested")
 	}
 	conn, err := zerobus.SystemBusDispatcher(ctx)
@@ -168,7 +168,28 @@ func (a *Adapter) Probe(ctx context.Context) error {
 			a.caps.Suspend = false
 		}
 	}
+	if a.requirements.Power {
+		// Reboot/PowerOff only degrade the lock screen power actions, so they
+		// never enter Missing; the authorization explains a false capability.
+		a.caps.RebootAuthorization = a.canAction(ctx, "CanReboot")
+		a.caps.Reboot = a.caps.RebootAuthorization == "yes"
+		a.caps.PowerOffAuthorization = a.canAction(ctx, "CanPowerOff")
+		a.caps.PowerOff = a.caps.PowerOffAuthorization == "yes"
+	}
 	return nil
+}
+
+// canAction returns logind's Can* answer, or "error" when it cannot be read.
+// Only "yes" works with interactive=false.
+func (a *Adapter) canAction(ctx context.Context, method string) string {
+	body, err := a.call(ctx, managerPath, managerInterface+"."+method)
+	if err != nil || len(body) != 1 {
+		return "error"
+	}
+	if auth, ok := body[0].(string); ok {
+		return auth
+	}
+	return "error"
 }
 
 // currentSession resolves the process's session by PID. A compositor started
@@ -335,23 +356,25 @@ func (a *Adapter) Run(ctx context.Context, commands <-chan ports.SystemCommand, 
 	if err := a.emit(ctx, events, ports.SystemCapabilityReport{Capabilities: a.Capabilities()}); err != nil {
 		return err
 	}
-	var suspendReply <-chan *suspendResult
-	var suspendCancel context.CancelFunc
+	// One power request (suspend, reboot or poweroff) is pending at a time.
+	var actionReply <-chan *actionResult
+	var actionCancel context.CancelFunc
+	var actionOp string
 	defer func() {
-		if suspendCancel != nil {
-			suspendCancel()
+		if actionCancel != nil {
+			actionCancel()
 		}
 	}()
 	for {
 		select {
-		case reply := <-suspendReply:
-			suspendCancel()
-			suspendReply, suspendCancel = nil, nil
+		case reply := <-actionReply:
+			actionCancel()
+			actionReply, actionCancel = nil, nil
 			if reply == nil {
-				return errors.New("suspend reply channel closed")
+				return errors.New(actionOp + " reply channel closed")
 			}
 			if reply.Err != nil {
-				if err := a.emit(ctx, events, ports.SystemFailure{Operation: "suspend", Err: reply.Err}); err != nil {
+				if err := a.emit(ctx, events, ports.SystemFailure{Operation: actionOp, Err: reply.Err}); err != nil {
 					return err
 				}
 			}
@@ -395,46 +418,52 @@ func (a *Adapter) Run(ctx context.Context, commands <-chan ports.SystemCommand, 
 				if a.preparing && c.Cycle == a.cycle {
 					a.release()
 				}
-			case ports.SystemSuspend:
-				var err error
-				if !a.requirements.Sleep || !a.caps.Suspend {
-					err = errors.New("non-interactive suspend unsupported")
-				} else if suspendReply != nil {
-					err = errors.New("suspend request already pending")
-				} else {
-					// Never override block inhibitors, including ones owned by
-					// this UID (which privileged logind policies may otherwise
-					// permit). Query immediately before the ordinary Suspend call.
-					blocked, e := a.property(ctx, managerPath, managerInterface, "BlockInhibited")
-					if e != nil {
-						err = e
-					} else if value, ok := blocked.(string); !ok {
-						err = errors.New("invalid block inhibitor property")
-					} else {
-						for _, item := range strings.Split(value, ":") {
-							if item == "sleep" {
-								err = errors.New("sleep blocked by inhibitor")
-							}
-						}
-					}
-					if err != nil {
-						if e := a.emit(ctx, events, ports.SystemFailure{Operation: "suspend", Err: err}); e != nil {
-							return e
-						}
-						continue
-					}
-					bounded, cancel := context.WithTimeout(ctx, callTimeout)
-					suspendCancel = cancel // released on reply or by the loop's defer
-					suspendReply = a.bus.suspend(bounded, a.owner)
+			case ports.SystemSuspend, ports.SystemReboot, ports.SystemPowerOff:
+				op, method, inhibit, allowed := "suspend", "Suspend", "sleep", a.requirements.Sleep && a.caps.Suspend
+				switch c.(type) {
+				case ports.SystemReboot:
+					op, method, inhibit, allowed = "reboot", "Reboot", "shutdown", a.requirements.Power && a.caps.Reboot
+				case ports.SystemPowerOff:
+					op, method, inhibit, allowed = "poweroff", "PowerOff", "shutdown", a.requirements.Power && a.caps.PowerOff
 				}
-				if err != nil {
-					if e := a.emit(ctx, events, ports.SystemFailure{Operation: "suspend", Err: err}); e != nil {
-						return e
-					}
+				err := a.blockedAction(ctx, op, inhibit, allowed, actionReply != nil)
+				if err == nil {
+					bounded, cancel := context.WithTimeout(ctx, callTimeout)
+					actionCancel, actionOp = cancel, op // released on reply or by the loop's defer
+					actionReply = a.bus.powerAction(bounded, a.owner, method)
+				} else if e := a.emit(ctx, events, ports.SystemFailure{Operation: op, Err: err}); e != nil {
+					return e
 				}
 			}
 		}
 	}
+}
+
+// blockedAction reports why a power action must not be requested, or nil.
+// Never override block inhibitors, including ones owned by this UID (which
+// privileged logind policies may otherwise permit): BlockInhibited is queried
+// immediately before the ordinary non-interactive call.
+func (a *Adapter) blockedAction(ctx context.Context, op, inhibit string, allowed, pending bool) error {
+	if !allowed {
+		return errors.New("non-interactive " + op + " unsupported")
+	}
+	if pending {
+		return errors.New("power request already pending")
+	}
+	blocked, err := a.property(ctx, managerPath, managerInterface, "BlockInhibited")
+	if err != nil {
+		return err
+	}
+	value, ok := blocked.(string)
+	if !ok {
+		return errors.New("invalid block inhibitor property")
+	}
+	for _, item := range strings.Split(value, ":") {
+		if item == inhibit {
+			return errors.New(inhibit + " blocked by inhibitor")
+		}
+	}
+	return nil
 }
 
 func parseSignal(sig *signal, owner string, session objectPath) (ports.SystemEvent, bool) {

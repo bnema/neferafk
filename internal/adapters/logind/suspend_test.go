@@ -24,12 +24,12 @@ func TestRunSuspendFailureAndCancellation(t *testing.T) {
 			b.EXPECT().close().Return(nil).Once()
 			b.EXPECT().call(mock.Anything, testOwner, managerPath, "org.freedesktop.DBus.Properties.Get", []any{managerInterface, "BlockInhibited"}).Return([]any{makeVariant("")}, nil).Once()
 			started := make(chan context.Context, 1)
-			replies := make(chan *suspendResult, 1)
+			replies := make(chan *actionResult, 1)
 			failure := errors.New("suspend denied")
 			if !cancelRun {
-				replies <- &suspendResult{Err: failure}
+				replies <- &actionResult{Err: failure}
 			}
-			b.EXPECT().suspend(mock.Anything, testOwner).RunAndReturn(func(ctx context.Context, _ string) <-chan *suspendResult { started <- ctx; return replies }).Once()
+			b.EXPECT().powerAction(mock.Anything, testOwner, "Suspend").RunAndReturn(func(ctx context.Context, _, _ string) <-chan *actionResult { started <- ctx; return replies }).Once()
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			commands := make(chan ports.SystemCommand, 1)
