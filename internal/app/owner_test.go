@@ -743,3 +743,104 @@ func TestSpawnOmitsStartupAndCurrentPINEnvNames(t *testing.T) {
 	h.cfgCh <- ports.ConfigChanged{Config: next}
 	h.status()
 }
+
+// powerCommand returns the next system command, skipping keyboard backlight
+// commands that locking also queues.
+func (h *harness) powerCommand() ports.SystemCommand {
+	h.t.Helper()
+	for {
+		if c := h.sysCommand(); c != nil {
+			if _, ok := c.(ports.SystemKeyboardBacklight); !ok {
+				return c
+			}
+		}
+	}
+}
+func (h *harness) noPowerCommand() {
+	h.t.Helper()
+	deadline := time.After(60 * time.Millisecond)
+	for {
+		select {
+		case c := <-h.sysCmd:
+			if _, ok := c.(ports.SystemKeyboardBacklight); !ok {
+				h.t.Fatalf("unexpected system command %#v", c)
+			}
+		case <-deadline:
+			return
+		}
+	}
+}
+
+func TestLockCarriesPowerActionsAndPowerRequestsAreGated(t *testing.T) {
+	cfg := cfgOf(0, 0, 0, 0)
+	cfg.LockPowerActions = true
+	h := newHarness(t, cfg, nil)
+	locks := h.lockCapture()
+	h.visual.EXPECT().Detach().Return(nil).Once()
+	h.deadlines()
+	// No lock yet: refused.
+	h.visEv <- ports.PowerRequested{Generation: 1, Action: ports.PowerReboot}
+	h.noPowerCommand()
+	h.sysEv <- ports.SystemLockRequested{}
+	l := lockOf(t, locks)
+	if !l.PowerActions {
+		t.Fatalf("lock %+v", l)
+	}
+	h.visEv <- ports.LockConfirmed{Generation: l.Generation}
+	// Stale generation and unknown action: refused.
+	h.visEv <- ports.PowerRequested{Generation: l.Generation + 1, Action: ports.PowerReboot}
+	h.visEv <- ports.PowerRequested{Generation: l.Generation, Action: 9}
+	h.noPowerCommand()
+	for action, want := range map[ports.PowerAction]ports.SystemCommand{ports.PowerSuspend: ports.SystemSuspend{}, ports.PowerReboot: ports.SystemReboot{}, ports.PowerOff: ports.SystemPowerOff{}} {
+		h.visEv <- ports.PowerRequested{Generation: l.Generation, Action: action}
+		if got := h.powerCommand(); got != want {
+			t.Fatalf("action %d sent %#v", action, got)
+		}
+	}
+	if st := h.status(); !st.Protected {
+		t.Fatalf("power request changed lock state: %+v", st)
+	}
+	// Turning the option off by reload applies at once.
+	cfg.LockPowerActions = false
+	h.cfgCh <- ports.ConfigChanged{Config: cfg}
+	h.visEv <- ports.PowerRequested{Generation: l.Generation, Action: ports.PowerOff}
+	h.noPowerCommand()
+}
+
+func TestPowerActionsOffByDefault(t *testing.T) {
+	h := newHarness(t, cfgOf(0, 0, 0, 0), nil)
+	locks := h.lockCapture()
+	h.visual.EXPECT().Detach().Return(nil).Once()
+	h.deadlines()
+	h.sysEv <- ports.SystemLockRequested{}
+	l := lockOf(t, locks)
+	if l.PowerActions {
+		t.Fatal("power actions sent while off")
+	}
+	h.visEv <- ports.LockConfirmed{Generation: l.Generation}
+	h.visEv <- ports.PowerRequested{Generation: l.Generation, Action: ports.PowerSuspend}
+	h.noPowerCommand()
+}
+
+func TestStartupGateWarnsForUnavailablePowerActions(t *testing.T) {
+	logs := &lockedBuffer{}
+	cfg := cfgOf(0, 0, 0, 0)
+	cfg.LockPowerActions = true
+	h := newHarness(t, cfg, func(o *Options) {
+		o.Gate, o.ExpectSystem = true, true
+		o.Log = zerowrap.New(zerowrap.Config{Output: logs})
+	})
+	h.visual.EXPECT().Close().Return(nil).Maybe()
+	h.send(ports.WaylandCapabilities{})
+	h.sysEv <- ports.SystemCapabilityReport{Capabilities: ports.SystemCapabilities{Session: true, SuspendAuthorization: "no", Reboot: true, RebootAuthorization: "yes", PowerOffAuthorization: "challenge"}}
+	h.status()
+	out := logs.String()
+	for _, want := range []string{"lock screen suspend unavailable (no)", "lock screen poweroff unavailable (challenge)"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in %q", want, out)
+		}
+	}
+	if strings.Contains(out, "reboot unavailable") {
+		t.Fatal("warned for available reboot")
+	}
+}

@@ -53,6 +53,26 @@ func unsupported(wl *ports.Capabilities, sys *ports.SystemCapabilities) []string
 	return missing
 }
 
+// powerWarnings lists the lock screen power actions that cannot run, with
+// logind's authorization answer, when lock.power-actions is on. Suspend is
+// skipped when suspendWarning already reports it.
+func powerWarnings(cfg ports.Config, sys *ports.SystemCapabilities) []string {
+	if !cfg.LockPowerActions || sys == nil {
+		return nil
+	}
+	var out []string
+	if !sys.Suspend && cfg.SleepAfter == 0 {
+		out = append(out, fmt.Sprintf("lock screen suspend unavailable (%s)", sys.SuspendAuthorization))
+	}
+	if !sys.Reboot {
+		out = append(out, fmt.Sprintf("lock screen reboot unavailable (%s)", sys.RebootAuthorization))
+	}
+	if !sys.PowerOff {
+		out = append(out, fmt.Sprintf("lock screen poweroff unavailable (%s)", sys.PowerOffAuthorization))
+	}
+	return out
+}
+
 // suspendWarning reports why an enabled sleep action cannot suspend, or "".
 func suspendWarning(cfg ports.Config, sys *ports.SystemCapabilities) string {
 	if cfg.SleepAfter == 0 || sys == nil || sys.Suspend {

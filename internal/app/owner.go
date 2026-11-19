@@ -228,6 +228,9 @@ func (o *Owner) checkGate() error {
 	if w := suspendWarning(o.cfg, o.sysCaps); w != "" {
 		o.log.Warn().Msg(w)
 	}
+	for _, w := range powerWarnings(o.cfg, o.sysCaps) {
+		o.log.Warn().Msg(w)
+	}
 	return nil
 }
 
@@ -360,7 +363,7 @@ func (o *Owner) startLock(ctx context.Context) error {
 	if !o.lockWanted() || o.lockGen == 0 {
 		return nil
 	}
-	err := o.opt.Visual.Lock(ctx, ports.VisualLock{Generation: o.lockGen, Auth: o.bootstrap(), Output: o.cfg.LockOutput, Spawn: o.spawn()})
+	err := o.opt.Visual.Lock(ctx, ports.VisualLock{Generation: o.lockGen, Auth: o.bootstrap(), Output: o.cfg.LockOutput, PowerActions: o.cfg.LockPowerActions, Spawn: o.spawn()})
 	if err != nil {
 		o.log.Warn().Err(err).Uint64("generation", uint64(o.lockGen)).Dur("retry_in", o.delay).Msg("lock visual unavailable")
 		o.armRetry()
@@ -379,8 +382,8 @@ func (o *Owner) reload(ctx context.Context, cfg ports.Config) error {
 		return nil
 	}
 	w, s := Requirements(cfg)
-	if w.OutputPower && !o.startWL.OutputPower || s.Sleep && !o.startSY.Sleep {
-		o.log.Warn().Msg("reload enables output-off or sleep support that was not initialised at startup; restart the daemon")
+	if w.OutputPower && !o.startWL.OutputPower || s.Sleep && !o.startSY.Sleep || s.Power && !o.startSY.Power {
+		o.log.Warn().Msg("reload enables output-off, sleep or power-action support that was not initialised at startup; restart the daemon")
 	}
 	if o.gated && o.cfg.SleepAfter == 0 {
 		if w := suspendWarning(cfg, o.sysCaps); w != "" {
@@ -520,6 +523,8 @@ func (o *Owner) visual(ctx context.Context, ev ports.VisualEvent) error {
 			o.lockGen = 0
 			o.retry.Stop()
 		}
+	case ports.PowerRequested:
+		o.power(v)
 	case ports.VisualExited:
 		if o.lockWanted() {
 			// A dead lock visual leaves the session locked; bring it back.
@@ -530,6 +535,35 @@ func (o *Owner) visual(ctx context.Context, ev ports.VisualEvent) error {
 		}
 	}
 	return nil
+}
+
+// power forwards a lock screen power request to logind. The visual only asks;
+// the daemon decides from the current config and lock generation. Turning
+// lock.power-actions off by reload takes effect at once here, while turning
+// it on reaches the visual (VisualLock.PowerActions) from the next lock.
+// It never changes lock state.
+func (o *Owner) power(v ports.PowerRequested) {
+	log := o.log.Info().Uint64("generation", uint64(v.Generation)).Uint8("action", uint8(v.Action))
+	var cmd ports.SystemCommand
+	switch v.Action {
+	case ports.PowerSuspend:
+		cmd = ports.SystemSuspend{}
+	case ports.PowerReboot:
+		cmd = ports.SystemReboot{}
+	case ports.PowerOff:
+		cmd = ports.SystemPowerOff{}
+	}
+	switch {
+	case !o.cfg.LockPowerActions:
+		log.Msg("power request ignored: lock.power-actions is off")
+	case !o.lockWanted() || o.lockGen == 0 || v.Generation != o.lockGen:
+		log.Msg("power request ignored: not the current lock")
+	case cmd == nil:
+		log.Msg("power request ignored: unknown action")
+	default:
+		log.Msg("power request accepted")
+		o.sq = append(o.sq, cmd)
+	}
 }
 
 func (o *Owner) control(ctx context.Context, req ports.ControlRequest) error {
