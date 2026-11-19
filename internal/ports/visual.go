@@ -94,6 +94,19 @@ const (
 // Valid reports whether a is a known power action.
 func (a PowerAction) Valid() bool { return a >= PowerSuspend && a <= PowerOff }
 
+// String names the action for logs: suspend, reboot, poweroff or unknown.
+func (a PowerAction) String() string {
+	switch a {
+	case PowerSuspend:
+		return "suspend"
+	case PowerReboot:
+		return "reboot"
+	case PowerOff:
+		return "poweroff"
+	}
+	return "unknown"
+}
+
 // PowerRequested is a request from the visual, never authority: the daemon
 // re-checks Config.LockPowerActions and that Generation is the current lock
 // before forwarding the action to logind.
