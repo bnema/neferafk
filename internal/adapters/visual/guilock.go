@@ -37,7 +37,7 @@ type lockState struct {
 	Failures int       // rejected submissions since this lock started
 	LockedAt time.Time // when the compositor confirmed the lock; zero before
 
-	Ctrl      bool // Ctrl alone is held once locked: reveals LockedAt
+	Ctrl      bool // Ctrl alone is held once locked: LockedAt replaces the date
 	PowerHelp bool // Ctrl is set and the power shortcuts are on
 }
 

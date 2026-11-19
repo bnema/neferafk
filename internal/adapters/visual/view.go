@@ -44,9 +44,8 @@ const (
 	// Row heights around the field. The balances are written out: tests
 	// check they equal the rows they mirror.
 	clockH       = 24 // date line
-	lockedH      = 22 // lock-time line
-	boxGap       = 8  // between the lines above and the box
-	balanceH     = 46 // below the box: clockH + lockedH
+	boxGap       = 8  // between the date line and the box
+	balanceH     = 24 // below the box: clockH
 	barGap       = 4  // between the field and the bar
 	barH         = 1
 	hintGap      = 12 // between the bar and the hint
@@ -58,9 +57,10 @@ const (
 )
 
 var (
-	cssClock  = fmt.Sprintf("color:#ffffff;text-align:right;height:%dpx", clockH)
-	cssLocked = fmt.Sprintf("color:rgba(255,255,255,0.5);text-align:right;height:%dpx;margin-bottom:%dpx", lockedH, boxGap)
-	// cssBalance mirrors cssClock and cssLocked below the box.
+	cssClock = clockCSS("#ffffff")
+	// cssLocked is cssClock dimmed, for the lock time.
+	cssLocked = clockCSS("rgba(255,255,255,0.5)")
+	// cssBalance mirrors the date line below the box.
 	cssBalance = fmt.Sprintf("height:%dpx;margin-top:%dpx", balanceH, boxGap)
 	// cssHintBalance mirrors the bar and cssHint above the field.
 	cssHint = hintCSS("#ffffff")
@@ -125,12 +125,19 @@ func hintCSS(color string) string {
 	return fmt.Sprintf("color:%s;margin-top:%dpx;height:%dpx;text-align:center", color, hintGap, hintH)
 }
 
-// lockedText is the lock-time line, blank unless Ctrl reveals it.
-func lockedText(s lockState) string {
-	if !s.Ctrl || s.LockedAt.IsZero() {
-		return " "
+// clockCSS styles the date line in color; the date and the lock time share
+// it so swapping them never shifts the layout.
+func clockCSS(color string) string {
+	return fmt.Sprintf("color:%s;text-align:right;height:%dpx;margin-bottom:%dpx", color, clockH, boxGap)
+}
+
+// clockLine is the text and style of the line above the box: the lock time
+// while Ctrl reveals it, else the date.
+func clockLine(s lockState, now time.Time) (string, string) {
+	if s.Ctrl && !s.LockedAt.IsZero() {
+		return s.LockedAt.Format(lockedLayout), cssLocked
 	}
-	return s.LockedAt.Format(lockedLayout)
+	return now.Format(clockLayout), cssClock
 }
 
 const powerHelpText = "F1 sleep  F2 reboot  F3 off"
@@ -179,8 +186,8 @@ func maskFor(s lockState, p promptKind) (string, string) {
 // UnlockBox draws the date line, the box and the balancing spacer.
 func UnlockBox(root nefergui.Node, s lockState, p promptKind, now time.Time) {
 	frame := root.Column(nefergui.Class("frame"), nefergui.Inline(cssFrame))
-	frame.Text(now.Format(clockLayout), nefergui.Key("clock"), nefergui.Inline(cssClock))
-	frame.Text(lockedText(s), nefergui.Key("locked"), nefergui.Inline(cssLocked))
+	clock, css := clockLine(s, now)
+	frame.Text(clock, nefergui.Key("clock"), nefergui.Inline(css))
 	box := frame.Column(nefergui.Class("box"), nefergui.Key("box"), nefergui.Inline(cssBox))
 	box.Spacer(nefergui.Key("hint-balance"), nefergui.Inline(cssHintBalance))
 	mask, css := maskFor(s, p)

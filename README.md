@@ -84,7 +84,7 @@ Durations use Go syntax (`30s`, `5m`, `1h`), up to 24h. The order of the actions
 
 The lock prompt shows on every output. Set `lock.output` to show it only on that output while it is connected; the other outputs then show black. A change applies from the next lock. `wlr-randr` lists the output names.
 
-The lock screen shows the date and the number of rejected attempts. Holding `Ctrl` alone also shows the time the lock started. A thin line under the input is lit while Caps Lock is on.
+The lock screen shows the date and the number of rejected attempts. Holding `Ctrl` alone replaces the date with the time the lock started. A thin line under the input is lit while Caps Lock is on.
 
 With `lock.power-actions = on`, the lock screen accepts power shortcuts without authentication: `Ctrl+F1` suspends, and holding `Ctrl+F2` (reboot) or `Ctrl+F3` (power off) for one second fills the line under the input and then runs the action. Releasing early cancels. Holding `Ctrl` alone shows the shortcuts under the input. logind must allow the action without an interactive prompt; the daemon logs a warning otherwise. Enabling it applies from the next lock (after a restart if it was off at startup); disabling it stops the shortcuts at once, but the help still shows until the next lock.
 

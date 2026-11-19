@@ -112,16 +112,22 @@ func TestBarShowsHoldThenCaps(t *testing.T) {
 	require.Contains(t, css, "background-color:#ffffff")
 }
 
-func TestLockTimeShowsOnlyWhileCtrlIsHeld(t *testing.T) {
+func TestCtrlSwapsTheDateForTheLockTime(t *testing.T) {
 	at := time.Date(2026, 1, 2, 9, 7, 0, 0, time.Local)
-	require.Equal(t, " ", lockedText(lockState{Ctrl: true}), "not locked yet")
-	require.Equal(t, " ", lockedText(lockState{LockedAt: at}), "Ctrl not held")
-	require.Equal(t, "locked 09:07", lockedText(lockState{LockedAt: at, Ctrl: true}))
+	now := time.Date(2026, 1, 2, 9, 30, 0, 0, time.Local)
+	text, css := clockLine(lockState{Ctrl: true}, now)
+	require.Equal(t, "Fri 02 Jan 2026  09:30", text, "not locked yet")
+	require.Equal(t, cssClock, css)
+	text, _ = clockLine(lockState{LockedAt: at}, now)
+	require.Equal(t, "Fri 02 Jan 2026  09:30", text, "Ctrl not held")
+	text, css = clockLine(lockState{LockedAt: at, Ctrl: true}, now)
+	require.Equal(t, "locked 09:07", text)
+	require.Equal(t, cssLocked, css)
 }
 
 // The spacers mirror the rows around the field so it stays centered.
 func TestBalancesMirrorAddedRows(t *testing.T) {
-	require.Equal(t, clockH+lockedH, balanceH)
+	require.Equal(t, clockH, balanceH)
 	require.Equal(t, barGap+barH+hintH, hintBalanceH)
 	require.Contains(t, barCSS(lockState{}, promptPassword), fmt.Sprintf("height:%dpx;min-height:0px;margin-top:%dpx", barH, barGap))
 }
