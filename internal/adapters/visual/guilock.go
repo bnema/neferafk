@@ -36,6 +36,8 @@ type lockState struct {
 
 	Failures int       // rejected submissions since this lock started
 	LockedAt time.Time // when the compositor confirmed the lock; zero before
+
+	PowerHelp bool // Ctrl alone is held with power shortcuts on, once locked
 }
 
 // lockConfig wires the session lock to its caller. Every callback runs on the
@@ -170,6 +172,7 @@ type locker struct {
 	unlock    bool      // requested; honoured once locked
 	power     powerHold // Ctrl+F power shortcuts
 	caps      bool      // Caps Lock is on, shown as lockState.Caps
+	ctrl      bool      // Ctrl alone is held, for lockState.PowerHelp
 }
 
 // wait blocks for one event and applies it.
@@ -245,7 +248,7 @@ func (l *locker) view(f *nefergui.Frame, s *screen) {
 // state is what the view may show at now: never the secret itself.
 func (l *locker) state(now time.Time) lockState {
 	return lockState{Mask: l.secret.Len(), Status: l.status, Failures: l.fails, LockedAt: l.at,
-		Caps: l.caps, Hold: l.power.progress(now)}
+		Caps: l.caps, Hold: l.power.progress(now), PowerHelp: l.powerHelp()}
 }
 
 // setStatus applies st and counts the first failure after a submission. The
@@ -383,13 +386,23 @@ func (l *locker) Key(ev *neferclient.KeyEvent) {
 	}
 }
 
-// ModifiersChanged tracks Caps Lock for the indicator bar and cancels a
-// power hold once Ctrl is no longer held.
+// powerHelp reports whether the hint shows the power shortcuts: Ctrl alone
+// is held, the shortcuts are on and the lock is confirmed.
+func (l *locker) powerHelp() bool { return l.ctrl && l.cfg.PowerActions && !l.at.IsZero() }
+
+// ModifiersChanged tracks Caps Lock for the indicator bar and Ctrl for the
+// power shortcut help, and cancels a power hold once Ctrl is no longer held.
 func (l *locker) ModifiersChanged(mods neferclient.Modifiers) {
 	redraw := false
 	if caps := mods&neferclient.ModCapsLock != 0; caps != l.caps {
 		l.caps = caps
 		redraw = true
+	}
+	held := mods&(neferclient.ModCtrl|neferclient.ModAlt|neferclient.ModSuper|neferclient.ModShift) == neferclient.ModCtrl
+	if held != l.ctrl {
+		help := l.powerHelp()
+		l.ctrl = held
+		redraw = redraw || help != l.powerHelp()
 	}
 	// Ctrl held when the lock gained focus yields no Control release event.
 	if mods&neferclient.ModCtrl == 0 && l.power.cancel() {

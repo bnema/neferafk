@@ -86,7 +86,7 @@ The lock prompt shows on every output. Set `lock.output` to show it only on that
 
 The lock screen shows the date, the time the lock started, and the number of rejected attempts. A thin line under the input is lit while Caps Lock is on.
 
-With `lock.power-actions = on`, the lock screen accepts power shortcuts without authentication: `Ctrl+F1` suspends, and holding `Ctrl+F2` (reboot) or `Ctrl+F3` (power off) for one second fills the line under the input and then runs the action. Releasing early cancels. logind must allow the action without an interactive prompt; the daemon logs a warning otherwise. Enabling it applies from the next lock (after a restart if it was off at startup); disabling it applies at once.
+With `lock.power-actions = on`, the lock screen accepts power shortcuts without authentication: `Ctrl+F1` suspends, and holding `Ctrl+F2` (reboot) or `Ctrl+F3` (power off) for one second fills the line under the input and then runs the action. Releasing early cancels. Holding `Ctrl` alone shows the shortcuts under the input. logind must allow the action without an interactive prompt; the daemon logs a warning otherwise. Enabling it applies from the next lock (after a restart if it was off at startup); disabling it applies at once.
 
 PIN mode compares a 6 to 32 digit PIN read from the daemon's environment or from `pass show ENTRY`. If the PIN source is unavailable or invalid, the lock asks for the password through PAM.
 

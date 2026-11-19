@@ -63,7 +63,9 @@ var (
 	// cssBalance mirrors cssClock and cssLocked below the box.
 	cssBalance = fmt.Sprintf("height:%dpx;margin-top:%dpx", balanceH, boxGap)
 	// cssHintBalance mirrors the bar and cssHint above the field.
-	cssHint        = fmt.Sprintf("color:#ffffff;margin-top:%dpx;height:%dpx;text-align:center", hintGap, hintH)
+	cssHint = fmt.Sprintf("color:#ffffff;margin-top:%dpx;height:%dpx;text-align:center", hintGap, hintH)
+	// cssPowerHelp is cssHint dimmed, for the power shortcut help.
+	cssPowerHelp   = fmt.Sprintf("color:rgba(255,255,255,0.5);margin-top:%dpx;height:%dpx;text-align:center", hintGap, hintH)
 	cssHintBalance = fmt.Sprintf("margin-bottom:%dpx;height:%dpx", hintGap, hintBalanceH)
 	// cssRelief is the inverted relief: bottom and right edges at 50% white.
 	cssRelief = fmt.Sprintf("border-bottom:%[1]dpx solid rgba(255,255,255,0.5);"+
@@ -125,6 +127,17 @@ func lockedText(at time.Time) string {
 	return at.Format(lockedLayout)
 }
 
+const powerHelpText = "F1 sleep  F2 reboot  F3 off"
+
+// hintLine is the text and style of the line under the input: the power
+// shortcut help while Ctrl is held, else hintFor.
+func hintLine(s lockState, p promptKind) (string, string) {
+	if s.PowerHelp {
+		return powerHelpText, cssPowerHelp
+	}
+	return hintFor(s, p), cssHint
+}
+
 // hintFor is the line under the input: the attempt status first, then a note
 // for prompts the bare field cannot convey. It never carries typed input.
 func hintFor(s lockState, p promptKind) string {
@@ -167,7 +180,8 @@ func UnlockBox(root nefergui.Node, s lockState, p promptKind, now time.Time) {
 	mask, css := maskFor(s, p)
 	box.Text(mask, nefergui.Key("mask"), nefergui.Inline(css))
 	box.Spacer(nefergui.Key("bar"), nefergui.Inline(barCSS(s, p)))
-	box.Text(hintFor(s, p), nefergui.Key("hint"), nefergui.Inline(cssHint))
+	hint, hcss := hintLine(s, p)
+	box.Text(hint, nefergui.Key("hint"), nefergui.Inline(hcss))
 	frame.Spacer(nefergui.Key("balance"), nefergui.Inline(cssBalance))
 }
 

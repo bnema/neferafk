@@ -85,6 +85,18 @@ func TestDeniedCountsRepeatedFailures(t *testing.T) {
 	require.Equal(t, " ", hintFor(lockState{Status: lockIdle, Failures: 3}, promptPassword))
 }
 
+func TestPowerHelpReplacesTheHint(t *testing.T) {
+	text, css := hintLine(lockState{Status: lockFailed, Failures: 3, PowerHelp: true}, promptMore)
+	require.Equal(t, "F1 sleep  F2 reboot  F3 off", text)
+	require.LessOrEqual(t, utf8.RuneCountInString(text), maxHintRunes)
+	require.Equal(t, cssPowerHelp, css)
+	require.Contains(t, css, "rgba(255,255,255,0.5)")
+	require.Contains(t, css, fmt.Sprintf("margin-top:%dpx;height:%dpx", hintGap, hintH), "same outer height")
+	text, css = hintLine(lockState{Status: lockFailed, Failures: 3}, promptMore)
+	require.Equal(t, "Denied ×3", text)
+	require.Equal(t, cssHint, css)
+}
+
 func TestBarShowsHoldThenCaps(t *testing.T) {
 	for _, w := range []int{passwordW, pinW} {
 		outer := fieldOuter(w)

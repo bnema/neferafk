@@ -109,3 +109,21 @@ func TestLockedRecordsLockTime(t *testing.T) {
 	l.Locked()
 	require.False(t, l.state(time.Now()).LockedAt.Before(before))
 }
+
+func TestPowerHelpNeedsCtrlAlonePowerActionsAndLock(t *testing.T) {
+	l := boundLocker("", map[neferclient.SurfaceID]*screen{})
+	l.secret = neferclient.NewSecretBuffer(lockSecretMax)
+	now := time.Now()
+	l.ModifiersChanged(neferclient.ModCtrl)
+	require.False(t, l.state(now).PowerHelp, "power actions off")
+	l.cfg.PowerActions = true
+	require.False(t, l.state(now).PowerHelp, "not locked yet")
+	l.Locked()
+	require.True(t, l.state(now).PowerHelp)
+	l.ModifiersChanged(neferclient.ModCtrl | neferclient.ModShift)
+	require.False(t, l.state(now).PowerHelp, "Ctrl+Shift")
+	l.ModifiersChanged(neferclient.ModCtrl | neferclient.ModCapsLock)
+	require.True(t, l.state(now).PowerHelp, "Caps Lock does not matter")
+	l.ModifiersChanged(0) // released, or keyboard dropped
+	require.False(t, l.state(now).PowerHelp)
+}
